@@ -1,12 +1,10 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import json
 import asyncio
 from typing import Dict, Optional, List
-from datetime import datetime, timedelta
-from collections import deque
-import traceback
+from datetime import datetime
 
 # Read configuration from config.txt
 config = {}
@@ -22,7 +20,7 @@ except FileNotFoundError:
     print("Please create config.txt with your bot settings.")
     exit(1)
 
-# Get values from config
+# Get values from config - using your exact IDs
 TOKEN = config.get('TOKEN')
 GUILD_ID = int(config.get('GUILD_ID', '0'))
 RULES_CHANNEL_ID = int(config.get('RULES_CHANNEL_ID', '0'))
@@ -65,151 +63,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 user_states: Dict[int, Dict] = {}
 REGISTRY_FILE = 'registered_users.json'
 
-# Enhanced conversation system
-class ConversationManager:
-    def __init__(self):
-        self.active_conversations = {}
-        self.history = {}
-        self.message_queue = deque()
-        self.admin_current_chat = None
-        self.conversation_threads = {}
-        self.admin_notifications_enabled = True
-        
-    def add_to_queue(self, user_id: int, user_name: str, message: str, channel: str, timestamp: datetime):
-        queue_item = {
-            'user_id': user_id,
-            'user_name': user_name,
-            'message': message,
-            'channel': channel,
-            'timestamp': timestamp,
-            'status': 'pending'
-        }
-        self.message_queue.append(queue_item)
-        
-        self.active_conversations[user_id] = {
-            'last_message': timestamp,
-            'channel': channel,
-            'username': user_name,
-            'unread': True,
-            'message_count': self.active_conversations.get(user_id, {}).get('message_count', 0) + 1
-        }
-        
-        if user_id not in self.history:
-            self.history[user_id] = []
-        
-        self.history[user_id].append({
-            'from': 'user',
-            'message': message,
-            'channel': channel,
-            'timestamp': timestamp,
-            'read': False
-        })
-        
-        if len(self.history[user_id]) > 50:
-            self.history[user_id] = self.history[user_id][-50:]
-        
-        return queue_item
-    
-    def get_queue_summary(self):
-        pending = len([m for m in self.message_queue if m['status'] == 'pending'])
-        total = len(self.message_queue)
-        recent_users = []
-        
-        seen_users = set()
-        for item in list(self.message_queue)[-10:]:
-            if item['user_id'] not in seen_users:
-                seen_users.add(item['user_id'])
-                recent_users.append(item['user_name'])
-        
-        return {
-            'pending': pending,
-            'total': total,
-            'recent_users': recent_users[:5]
-        }
-    
-    def mark_as_read(self, user_id: int):
-        if user_id in self.active_conversations:
-            self.active_conversations[user_id]['unread'] = False
-        
-        if user_id in self.history:
-            for msg in self.history[user_id]:
-                if msg['from'] == 'user':
-                    msg['read'] = True
-    
-    def get_conversation_partners(self, limit=10):
-        sorted_users = sorted(
-            self.active_conversations.items(),
-            key=lambda x: x[1]['last_message'],
-            reverse=True
-        )
-        
-        result = []
-        for user_id, data in sorted_users[:limit]:
-            unread_count = 0
-            if user_id in self.history:
-                unread_count = sum(1 for msg in self.history[user_id] 
-                                 if msg['from'] == 'user' and not msg.get('read', False))
-            
-            result.append({
-                'user_id': user_id,
-                'username': data['username'],
-                'channel': data['channel'],
-                'last_message': data['last_message'],
-                'unread': data.get('unread', False),
-                'unread_count': unread_count,
-                'message_count': data.get('message_count', 0)
-            })
-        
-        return result
-    
-    def get_recent_messages(self, user_id: int, limit=10):
-        if user_id not in self.history:
-            return []
-        
-        return self.history[user_id][-limit:]
-    
-    def add_admin_message(self, user_id: int, message: str, timestamp: datetime):
-        if user_id not in self.history:
-            self.history[user_id] = []
-        
-        self.history[user_id].append({
-            'from': 'admin',
-            'message': message,
-            'timestamp': timestamp,
-            'read': True
-        })
-        
-        self.mark_as_read(user_id)
-        
-        if len(self.history[user_id]) > 50:
-            self.history[user_id] = self.history[user_id][-50:]
-    
-    def clear_old_conversations(self, hours=24):
-        cutoff = datetime.now() - timedelta(hours=hours)
-        removed_count = 0
-        
-        to_remove = []
-        for user_id, data in self.active_conversations.items():
-            if data['last_message'] < cutoff:
-                to_remove.append(user_id)
-        
-        for user_id in to_remove:
-            del self.active_conversations[user_id]
-            removed_count += 1
-        
-        new_queue = deque()
-        for item in self.message_queue:
-            if item['timestamp'] >= cutoff:
-                new_queue.append(item)
-            else:
-                removed_count += 1
-        
-        self.message_queue = new_queue
-        
-        return removed_count
-
-# Initialize conversation manager
-conv_manager = ConversationManager()
+# Store active conversations for 1-on-1 chat forwarding
+active_conversations: Dict[int, Dict] = {}  # user_id -> {admin_id, channel_id, channel_type}
+# Store message references for admin replies
+message_references: Dict[int, int] = {}  # admin_message_id -> user_id
 
 def load_registered_users():
     try:
@@ -224,6 +81,15 @@ def save_registered_users(users):
 
 registered_users = load_registered_users()
 
+# List of monitored channels (where messages get forwarded to admin)
+MONITORED_CHANNELS = []
+if GENERAL_CHAT_CHANNEL_ID:
+    MONITORED_CHANNELS.append(GENERAL_CHAT_CHANNEL_ID)
+if NATIONAL_TEAM_CHANNEL_ID:
+    MONITORED_CHANNELS.append(NATIONAL_TEAM_CHANNEL_ID)
+if DEMONSTRATION_TEAM_CHANNEL_ID:
+    MONITORED_CHANNELS.append(DEMONSTRATION_TEAM_CHANNEL_ID)
+
 @bot.event
 async def on_ready():
     print(f'✅ {bot.user} is online!')
@@ -234,18 +100,37 @@ async def on_ready():
     if guild:
         print(f'🏠 Server: {guild.name} (ID: {guild.id})')
         
+        # Check monitored channels
+        print("\n📢 MONITORED CHANNELS (messages will be forwarded):")
+        for channel_id in MONITORED_CHANNELS:
+            channel = guild.get_channel(channel_id)
+            if channel:
+                print(f'   ✅ #{channel.name} (ID: {channel.id})')
+            else:
+                print(f'   ❌ Channel not found! ID: {channel_id}')
+        
+        # Check admin user
+        admin_user = guild.get_member(ADMIN_USER_ID)
+        if admin_user:
+            print(f'👑 Admin: {admin_user.name}#{admin_user.discriminator} (ID: {admin_user.id})')
+        else:
+            print(f'⚠️ Admin user not found! ID: {ADMIN_USER_ID}')
+        
+        # Check rules channel
         rules_channel = guild.get_channel(RULES_CHANNEL_ID)
         if rules_channel:
-            print(f'📜 Rules Channel: #{rules_channel.name} (ID: {rules_channel.id})')
+            print(f'\n📜 Rules Channel: #{rules_channel.name} (ID: {rules_channel.id})')
         else:
             print(f'❌ Rules channel not found! ID: {RULES_CHANNEL_ID}')
         
+        # Check family role
         family_role = guild.get_role(FAMILY_ROLE_ID)
         if family_role:
             print(f'👪 Family Role: {family_role.name} (ID: {family_role.id})')
         else:
             print(f'❌ Family role not found! ID: {FAMILY_ROLE_ID}')
         
+        # Check team roles
         national_role = guild.get_role(NATIONAL_TEAM_ROLE_ID)
         if national_role:
             print(f'🇺🇳 National Team Role: {national_role.name} (ID: {national_role.id})')
@@ -257,63 +142,327 @@ async def on_ready():
             print(f'🎯 Demonstration Team Role: {demonstration_role.name} (ID: {demonstration_role.id})')
         else:
             print(f'⚠️ Demonstration Team role not found! ID: {DEMONSTRATION_TEAM_ROLE_ID}')
-        
-        national_channel = guild.get_channel(NATIONAL_TEAM_CHANNEL_ID)
-        if national_channel:
-            print(f'📢 National Team Channel: #{national_channel.name} (ID: {national_channel.id})')
-        else:
-            print(f'⚠️ National Team channel not found! ID: {NATIONAL_TEAM_CHANNEL_ID}')
-            
-        demonstration_channel = guild.get_channel(DEMONSTRATION_TEAM_CHANNEL_ID)
-        if demonstration_channel:
-            print(f'📢 Demonstration Team Channel: #{demonstration_channel.name} (ID: {demonstration_channel.id})')
-        else:
-            print(f'⚠️ Demonstration Team channel not found! ID: {DEMONSTRATION_TEAM_CHANNEL_ID}')
-        
-        general_channel = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-        if general_channel:
-            print(f'💬 General Chat Channel: #{general_channel.name} (ID: {general_channel.id})')
-        else:
-            print(f'⚠️ General Chat channel not found! ID: {GENERAL_CHAT_CHANNEL_ID}')
-        
-        if RULES_MESSAGE_ID:
-            try:
-                rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-                if rules_channel:
-                    try:
-                        rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-                        print(f'✅ Rules message found! (ID: {rules_message.id})')
-                        reactions = [str(r.emoji) for r in rules_message.reactions]
-                        if reactions:
-                            print(f'   Reactions on message: {", ".join(reactions)}')
-                        else:
-                            print(f'   No reactions on message yet')
-                    except discord.NotFound:
-                        print(f'❌ Rules message not found! ID: {RULES_MESSAGE_ID}')
-                    except discord.Forbidden:
-                        print(f'❌ No permission to read rules message')
-            except Exception as e:
-                print(f'⚠️ Error checking rules message: {e}')
-        else:
-            print('⚠️ No rules message ID set')
-    
-    cleanup_old_conversations.start()
     
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.watching,
         name="for messages to forward"
     ))
 
-@tasks.loop(hours=1)
-async def cleanup_old_conversations():
+@bot.event
+async def on_message(message: discord.Message):
+    """Handle messages in monitored channels and DMs"""
+    if message.author.bot:
+        return
+    
+    # Handle messages in monitored channels (forward to admin)
+    if message.channel.id in MONITORED_CHANNELS:
+        await handle_monitored_channel_message(message)
+        # Delete the original message
+        try:
+            await message.delete()
+            print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
+        except discord.Forbidden:
+            print(f'❌ Cannot delete message in #{message.channel.name}')
+        except discord.NotFound:
+            pass  # Message already deleted
+    
+    # Handle DMs to the bot (from admin or users)
+    elif isinstance(message.channel, discord.DMChannel):
+        # Check if this is the admin responding to a forwarded message
+        if message.author.id == ADMIN_USER_ID:
+            await handle_admin_dm_response(message)
+        # Check if this is a user responding to admin in an active conversation
+        elif message.author.id in active_conversations:
+            await handle_user_dm_response(message)
+        # Otherwise, handle registration DMs
+        else:
+            await handle_registration_dm(message)
+    
+    await bot.process_commands(message)
+
+async def handle_monitored_channel_message(message: discord.Message):
+    """Forward messages from monitored channels to admin via DM"""
+    admin_user = bot.get_user(ADMIN_USER_ID)
+    if not admin_user:
+        print(f'❌ Admin user not found! ID: {ADMIN_USER_ID}')
+        return
+    
     try:
-        removed = conv_manager.clear_old_conversations(hours=24)
-        if removed > 0:
-            print(f"🧹 Cleaned up {removed} old conversation items")
+        dm_channel = await admin_user.create_dm()
+        
+        # Determine which channel the message came from
+        channel_name = message.channel.name
+        channel_type = ""
+        emoji = ""
+        if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
+            channel_type = "General Chat"
+            emoji = "👥"
+        elif message.channel.id == NATIONAL_TEAM_CHANNEL_ID:
+            channel_type = "National Team Chat"
+            emoji = "🇺🇳"
+        elif message.channel.id == DEMONSTRATION_TEAM_CHANNEL_ID:
+            channel_type = "Demonstration Team Chat"
+            emoji = "🎯"
+        else:
+            channel_type = f"#{channel_name}"
+            emoji = "💬"
+        
+        # Create embed for the forwarded message
+        embed = discord.Embed(
+            title=f"{emoji} Message from {channel_type}",
+            description=message.content,
+            color=discord.Color.blue(),
+            timestamp=message.created_at
+        )
+        
+        # Add author info
+        embed.set_author(
+            name=f"{message.author.name} ({message.author.nick if message.author.nick else 'No nickname'})",
+            icon_url=message.author.avatar.url if message.author.avatar else None
+        )
+        
+        # Add metadata
+        embed.add_field(name="👤 Author", value=f"{message.author.mention}\nID: `{message.author.id}`", inline=True)
+        embed.add_field(name="📝 Channel", value=f"#{channel_name}\n{emoji} {channel_type}", inline=True)
+        
+        # Handle attachments
+        if message.attachments:
+            attachment_info = []
+            for i, attachment in enumerate(message.attachments[:3]):  # Limit to first 3 attachments
+                if hasattr(attachment, 'content_type') and attachment.content_type and 'image' in attachment.content_type:
+                    attachment_info.append(f"📸 [Image {i+1}]({attachment.url})")
+                elif hasattr(attachment, 'filename'):
+                    attachment_info.append(f"📎 [{attachment.filename}]({attachment.url})")
+                else:
+                    attachment_info.append(f"📎 [Attachment {i+1}]({attachment.url})")
+            
+            if len(message.attachments) > 3:
+                attachment_info.append(f"...and {len(message.attachments) - 3} more")
+            
+            embed.add_field(name="📎 Attachments", value="\n".join(attachment_info), inline=False)
+            
+            # Also send first image as image in embed if available
+            image_attachments = [a for a in message.attachments if hasattr(a, 'content_type') and a.content_type and 'image' in a.content_type]
+            if image_attachments:
+                embed.set_image(url=image_attachments[0].url)
+        
+        embed.add_field(
+            name="💭 How to Respond",
+            value="**Reply to this message** to send a DM back to the user.\nYour response will be sent as a direct message from you.",
+            inline=False
+        )
+        
+        # Send the forwarded message
+        forward_msg = await dm_channel.send(embed=embed)
+        
+        # Store conversation state
+        active_conversations[message.author.id] = {
+            'admin_id': ADMIN_USER_ID,
+            'admin_dm_channel': dm_channel.id,
+            'last_forwarded_message_id': forward_msg.id,
+            'original_channel_id': message.channel.id,
+            'original_channel_name': channel_name,
+            'channel_type': channel_type,
+            'channel_emoji': emoji
+        }
+        
+        # Store message reference for easy lookup
+        message_references[forward_msg.id] = message.author.id
+        
+        print(f'📤 Forwarded message from {message.author.name} in {channel_type} to admin')
+        
+    except discord.Forbidden:
+        print(f'❌ Cannot send DM to admin!')
     except Exception as e:
-        print(f"❌ Error cleaning up old conversations: {e}")
+        print(f'❌ Error forwarding message: {e}')
+
+async def handle_admin_dm_response(message: discord.Message):
+    """Handle when admin responds to a forwarded message"""
+    # Check if this is a reply to a forwarded message
+    if message.reference and message.reference.message_id:
+        try:
+            referenced_msg_id = message.reference.message_id
+            
+            # Check if we have this message in our references
+            if referenced_msg_id in message_references:
+                user_id = message_references[referenced_msg_id]
+                
+                guild = bot.get_guild(GUILD_ID)
+                if not guild:
+                    return
+                
+                user = guild.get_member(user_id)
+                if not user:
+                    await message.channel.send("❌ User not found in the server.")
+                    return
+                
+                # Get conversation context
+                conv_data = active_conversations.get(user_id, {})
+                channel_type = conv_data.get('channel_type', 'Chat')
+                emoji = conv_data.get('channel_emoji', '💬')
+                
+                try:
+                    user_dm = await user.create_dm()
+                    
+                    # Create embed for the admin's response
+                    embed = discord.Embed(
+                        title=f"{emoji} Response from Admin",
+                        description=message.content,
+                        color=discord.Color.green(),
+                        timestamp=datetime.utcnow()
+                    )
+                    embed.set_footer(text=f"Regarding your message in {channel_type}")
+                    
+                    # Send the admin's message to the user
+                    await user_dm.send(embed=embed)
+                    
+                    print(f'📨 Sent admin response to {user.name} regarding {channel_type}')
+                    
+                    # Confirm to admin
+                    confirm_embed = discord.Embed(
+                        description=f"✅ Response sent to {user.mention} ({user.name})",
+                        color=discord.Color.green()
+                    )
+                    await message.channel.send(embed=confirm_embed)
+                    
+                except discord.Forbidden:
+                    error_embed = discord.Embed(
+                        description=f"❌ Cannot send DM to {user.name}. They may have DMs disabled.",
+                        color=discord.Color.red()
+                    )
+                    await message.channel.send(embed=error_embed)
+                except Exception as e:
+                    error_embed = discord.Embed(
+                        description=f"❌ Error sending response: {str(e)}",
+                        color=discord.Color.red()
+                    )
+                    await message.channel.send(embed=error_embed)
+            else:
+                # Not a reply to one of our forwarded messages
+                pass
+        except Exception as e:
+            print(f'Error handling admin DM response: {e}')
+    else:
+        # Admin sent a message without replying - send instructions
+        help_embed = discord.Embed(
+            title="💭 How to Respond to Users",
+            description="To respond to a user's message:\n\n"
+                      "1. Find their original message above\n"
+                      "2. **Click 'Reply'** on that message\n"
+                      "3. Type your response\n"
+                      "4. Send the message\n\n"
+                      "**Your response will be sent directly to the user as a DM from you.**\n\n"
+                      "The user can then reply to your DM, and their response will appear here for you to continue the conversation.",
+            color=discord.Color.blue()
+        )
+        await message.channel.send(embed=help_embed)
+
+async def handle_user_dm_response(message: discord.Message):
+    """Handle when a user responds to admin in DM"""
+    user_id = message.author.id
+    
+    if user_id in active_conversations:
+        conv_data = active_conversations[user_id]
+        admin_id = conv_data.get('admin_id')
+        channel_type = conv_data.get('channel_type', 'Chat')
+        emoji = conv_data.get('channel_emoji', '💬')
+        
+        admin_user = bot.get_user(admin_id)
+        if admin_user:
+            try:
+                admin_dm = await admin_user.create_dm()
+                
+                # Forward user's response to admin
+                embed = discord.Embed(
+                    title=f"{emoji} User Response ({channel_type})",
+                    description=message.content,
+                    color=discord.Color.blue(),
+                    timestamp=datetime.utcnow()
+                )
+                embed.set_author(
+                    name=f"{message.author.name}",
+                    icon_url=message.author.avatar.url if message.author.avatar else None
+                )
+                embed.set_footer(text=f"User ID: {message.author.id}")
+                
+                # Handle attachments in user's response
+                if message.attachments:
+                    attachment_info = []
+                    for i, attachment in enumerate(message.attachments[:3]):
+                        if hasattr(attachment, 'content_type') and attachment.content_type and 'image' in attachment.content_type:
+                            attachment_info.append(f"📸 [Image {i+1}]({attachment.url})")
+                        elif hasattr(attachment, 'filename'):
+                            attachment_info.append(f"📎 [{attachment.filename}]({attachment.url})")
+                        else:
+                            attachment_info.append(f"📎 [Attachment {i+1}]({attachment.url})")
+                    
+                    if len(message.attachments) > 3:
+                        attachment_info.append(f"...and {len(message.attachments) - 3} more")
+                    
+                    embed.add_field(name="📎 Attachments", value="\n".join(attachment_info), inline=False)
+                    
+                    # Set image if available
+                    image_attachments = [a for a in message.attachments if hasattr(a, 'content_type') and a.content_type and 'image' in a.content_type]
+                    if image_attachments:
+                        embed.set_image(url=image_attachments[0].url)
+                
+                forward_msg = await admin_dm.send(embed=embed)
+                
+                # Update the last forwarded message ID
+                active_conversations[user_id]['last_forwarded_message_id'] = forward_msg.id
+                message_references[forward_msg.id] = user_id
+                
+                print(f'📤 Forwarded user response from {message.author.name} to admin')
+                
+            except discord.Forbidden:
+                print(f'❌ Cannot send DM to admin!')
+            except Exception as e:
+                print(f'❌ Error forwarding user response: {e}')
+
+async def handle_registration_dm(message: discord.Message):
+    """Handle registration DMs (existing functionality)"""
+    user_id = message.author.id
+    
+    if user_id in user_states and user_states[user_id]['waiting_for_name']:
+        child_name = message.content.strip()
+        
+        # Basic validation
+        if len(child_name) < 2 or len(child_name) > 30:
+            await message.channel.send("❌ Name must be 2-30 characters.")
+            return
+        
+        if not all(c.isalnum() or c.isspace() or c in ".-'" for c in child_name):
+            await message.channel.send("❌ Please use only letters, numbers, spaces, and basic punctuation.")
+            return
+        
+        user_states[user_id]['child_name'] = child_name
+        user_states[user_id]['waiting_for_name'] = False
+        user_states[user_id]['waiting_for_gender'] = True
+        
+        print(f"📝 {message.author.name} entered child name: {child_name}")
+        
+        embed = discord.Embed(
+            title="👨‍👩‍👧‍👦 Select Your Role",
+            description=f"**Step 2 of 3**: Are you the mother or father of **{child_name}**?\n\n"
+                      "👩 - I am the **Mother**\n"
+                      "👨 - I am the **Father**\n\n"
+                      "React with the appropriate emoji below:",
+            color=discord.Color.green()
+        )
+        
+        gender_message = await message.channel.send(embed=embed)
+        await gender_message.add_reaction('👩')
+        await gender_message.add_reaction('👨')
+        
+        user_states[user_id]['gender_message_id'] = gender_message.id
+        
+    elif user_id in user_states and user_states[user_id]['waiting_for_gender']:
+        await message.channel.send("⚠️ Please select by reacting to the message above with 👩 or 👨.")
+    elif user_id in user_states and user_states[user_id]['waiting_for_teams']:
+        await message.channel.send("⚠️ Please select teams by reacting to the message above with 🇺🇳, 🎯, or ✅ when done.")
 
 async def assign_family_role(member: discord.Member):
+    """Assign Family Member role to a member"""
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return False
@@ -331,6 +480,7 @@ async def assign_family_role(member: discord.Member):
     return False
 
 async def assign_team_roles(member: discord.Member, teams_selected: list):
+    """Assign team roles to a member based on selection"""
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return []
@@ -363,272 +513,8 @@ async def assign_team_roles(member: discord.Member, teams_selected: list):
     
     return assigned_teams
 
-async def forward_message_to_admin(message: discord.Message):
-    if message.author.bot:
-        return
-    
-    try:
-        await message.delete()
-        print(f"🗑️ Deleted message from {message.author.name} in #{message.channel.name}")
-    except discord.Forbidden:
-        print(f"❌ No permission to delete message in #{message.channel.name}")
-    except discord.HTTPException as e:
-        print(f"❌ Error deleting message: {e}")
-    
-    channel_name = message.channel.name
-    channel_type = "Unknown"
-    
-    if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
-        channel_type = "General Chat"
-    elif message.channel.id == NATIONAL_TEAM_CHANNEL_ID:
-        channel_type = "National Team Chat"
-    elif message.channel.id == DEMONSTRATION_TEAM_CHANNEL_ID:
-        channel_type = "Demonstration Team Chat"
-    else:
-        channel_type = f"#{channel_name}"
-    
-    guild = bot.get_guild(GUILD_ID)
-    member = guild.get_member(message.author.id) if guild else None
-    roles = []
-    
-    if member:
-        roles = [role.name for role in member.roles if role.name != "@everyone"]
-    
-    queue_item = conv_manager.add_to_queue(
-        user_id=message.author.id,
-        user_name=message.author.name,
-        message=message.content,
-        channel=channel_type,
-        timestamp=message.created_at
-    )
-    
-    admin = await bot.fetch_user(ADMIN_USER_ID)
-    if not admin:
-        print(f"❌ Admin user not found! ID: {ADMIN_USER_ID}")
-        return
-    
-    embed = discord.Embed(
-        title=f"📨 New Message from {message.author.name}",
-        description=f"**From:** {message.author.mention} (`{message.author.id}`)\n"
-                   f"**Channel:** {channel_type}\n"
-                   f"**Roles:** {', '.join(roles) if roles else 'No roles'}\n"
-                   f"**Queue Position:** #{len(conv_manager.message_queue)}\n\n"
-                   f"**Message:**\n{message.content}",
-        color=discord.Color.blue(),
-        timestamp=message.created_at
-    )
-    
-    if message.attachments:
-        attachment_list = []
-        for i, attachment in enumerate(message.attachments, 1):
-            attachment_list.append(f"[Attachment {i}: {attachment.filename}]({attachment.url})")
-        embed.add_field(name="📎 Attachments", value="\n".join(attachment_list), inline=False)
-    
-    queue_summary = conv_manager.get_queue_summary()
-    if queue_summary['pending'] > 1:
-        embed.add_field(
-            name="📊 Message Queue",
-            value=f"**Total Pending:** {queue_summary['pending']} messages\n"
-                  f"**Recent Users:** {', '.join(queue_summary['recent_users'][:3])}",
-            inline=False
-        )
-    
-    embed.set_footer(text=f"Reply with: !chat {message.author.id} [message]")
-    
-    try:
-        await admin.send(embed=embed)
-        
-        try:
-            notify_embed = discord.Embed(
-                title="✅ Message Sent",
-                description=f"Your message has been sent to the admin from **{channel_type}**.\n"
-                           "You'll receive a response via DM when available.",
-                color=discord.Color.green()
-            )
-            await message.author.send(embed=notify_embed)
-        except discord.Forbidden:
-            print(f"⚠️ Cannot send confirmation DM to {message.author.name}")
-        except Exception as e:
-            print(f"⚠️ Error sending confirmation: {e}")
-        
-        print(f"📤 Forwarded message from {message.author.name} to admin (from {channel_type})")
-        
-    except discord.Forbidden:
-        print(f"❌ Cannot send DM to admin (ID: {ADMIN_USER_ID})")
-    except Exception as e:
-        print(f"❌ Error forwarding message: {e}")
-
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        await bot.process_commands(message)
-        return
-    
-    if message.channel.id in [GENERAL_CHAT_CHANNEL_ID, NATIONAL_TEAM_CHANNEL_ID, DEMONSTRATION_TEAM_CHANNEL_ID]:
-        await forward_message_to_admin(message)
-        return
-    
-    if isinstance(message.channel, discord.DMChannel):
-        user_id = message.author.id
-        
-        if user_id == ADMIN_USER_ID:
-            if message.content and not message.content.startswith('!'):
-                if conv_manager.admin_current_chat:
-                    current_user_id = conv_manager.admin_current_chat
-                    user = await bot.fetch_user(current_user_id)
-                    
-                    if user:
-                        await send_message_to_user(user, message.content, message.author)
-                        return
-                    else:
-                        await message.channel.send("❌ Current chat user not found. Use `!current` to see your active chat.")
-                        return
-                else:
-                    await message.channel.send("ℹ️ No active chat. Use `!queue` to see pending messages or `!chat USER_ID` to start a conversation.")
-                    return
-            else:
-                await bot.process_commands(message)
-            return
-        
-        if str(user_id) not in registered_users:
-            await message.channel.send("❌ You need to register first! Please react to the rules message in the server.")
-            return
-        
-        admin = await bot.fetch_user(ADMIN_USER_ID)
-        if admin:
-            queue_item = conv_manager.add_to_queue(
-                user_id=user_id,
-                user_name=message.author.name,
-                message=message.content,
-                channel='Direct Message',
-                timestamp=message.created_at
-            )
-            
-            embed = discord.Embed(
-                title=f"📨 Direct Message from {message.author.name}",
-                description=f"**From:** {message.author.mention} (`{message.author.id}`)\n"
-                           f"**Via:** Direct Message\n"
-                           f"**Queue Position:** #{len(conv_manager.message_queue)}\n\n"
-                           f"**Message:**\n{message.content}",
-                color=discord.Color.purple(),
-                timestamp=message.created_at
-            )
-            
-            if message.attachments:
-                attachment_list = []
-                for i, attachment in enumerate(message.attachments, 1):
-                    attachment_list.append(f"[Attachment {i}: {attachment.filename}]({attachment.url})")
-                embed.add_field(name="📎 Attachments", value="\n".join(attachment_list), inline=False)
-            
-            queue_summary = conv_manager.get_queue_summary()
-            if queue_summary['pending'] > 1:
-                embed.add_field(
-                    name="📊 Message Queue",
-                    value=f"**Total Pending:** {queue_summary['pending']} messages\n"
-                          f"**Recent Users:** {', '.join(queue_summary['recent_users'][:3])}",
-                    inline=False
-                )
-            
-            embed.set_footer(text=f"Reply with: !chat {user_id} [message]")
-            
-            try:
-                await admin.send(embed=embed)
-                await message.channel.send("✅ Your message has been sent to the admin!")
-                print(f"📤 Forwarded DM from {message.author.name} to admin")
-            except discord.Forbidden:
-                await message.channel.send("❌ Cannot reach admin at the moment.")
-                print(f"❌ Cannot send DM to admin")
-            except Exception as e:
-                await message.channel.send("❌ Error sending your message.")
-                print(f"❌ Error forwarding DM: {e}")
-        else:
-            await message.channel.send("❌ Admin not found.")
-    
-    await bot.process_commands(message)
-
-async def send_message_to_user(user: discord.User, message: str, admin: discord.User):
-    try:
-        embed = discord.Embed(
-            title="📨 Message from Admin",
-            description=message,
-            color=discord.Color.green(),
-            timestamp=datetime.now()
-        )
-        embed.set_footer(text="You can reply to this message directly in DM")
-        
-        await user.send(embed=embed)
-        
-        conv_manager.add_admin_message(user.id, message, datetime.now())
-        conv_manager.admin_current_chat = user.id
-        conv_manager.mark_as_read(user.id)
-        
-        confirmation = discord.Embed(
-            title="✅ Message Sent",
-            description=f"**To:** {user.mention} (`{user.id}`)\n\n"
-                       f"**Your message:**\n{message}",
-            color=discord.Color.blue()
-        )
-        
-        await admin.send(embed=confirmation)
-        print(f"📨 Admin sent message to {user.name}")
-        
-    except discord.Forbidden:
-        await admin.send(f"❌ Cannot send DM to {user.mention}. They might have DMs disabled.")
-    except Exception as e:
-        await admin.send(f"❌ Error sending message: {e}")
-        print(f"❌ Error sending message to user: {e}")
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    print(f"\n🎯 REACTION DETECTED:")
-    print(f"   Channel ID: {payload.channel_id}")
-    print(f"   Message ID: {payload.message_id}")
-    print(f"   Emoji: {payload.emoji}")
-    print(f"   User ID: {payload.user_id}")
-    
-    if payload.user_id == bot.user.id:
-        print("   👆 Bot's own reaction, ignoring")
-        return
-    
-    if payload.channel_id == RULES_CHANNEL_ID:
-        print(f"   📍 This is in the RULES CHANNEL!")
-        print(f"   Looking for message ID: {RULES_MESSAGE_ID}")
-        
-        if payload.message_id == RULES_MESSAGE_ID:
-            print(f"   ✅ CORRECT MESSAGE FOUND!")
-            
-            if str(payload.emoji) == '✅':
-                print(f"   🎉 GREEN CHECK MARK DETECTED!")
-                
-                guild = bot.get_guild(payload.guild_id)
-                if guild:
-                    member = guild.get_member(payload.user_id)
-                    if member and not member.bot:
-                        print(f"   👤 User: {member.name}")
-                        
-                        if str(member.id) in registered_users:
-                            print(f"   ⚠️ User already registered")
-                            return
-                        
-                        print(f"   🚀 Starting DM process...")
-                        await start_dm_process(member)
-                    else:
-                        print(f"   ❌ Could not find member")
-            else:
-                print(f"   ❌ Wrong emoji: {payload.emoji} (expected ✅)")
-        else:
-            print(f"   ❌ Wrong message ID: {payload.message_id} (expected {RULES_MESSAGE_ID})")
-    else:
-        print(f"   ❌ Not in rules channel (expected {RULES_CHANNEL_ID})")
-    
-    channel = bot.get_channel(payload.channel_id)
-    if isinstance(channel, discord.DMChannel):
-        print(f"   💬 This is a DM reaction")
-        user = bot.get_user(payload.user_id)
-        if user and not user.bot:
-            await handle_dm_reaction(user, payload.emoji, payload.message_id)
-
 async def start_dm_process(member: discord.Member):
+    """Start the DM registration process"""
     try:
         if str(member.id) in registered_users:
             return
@@ -652,6 +538,7 @@ async def start_dm_process(member: discord.Member):
         
         await dm_channel.send("**Step 1 of 3**: Please type your child's name below:")
         
+        # Initialize user state
         user_states[member.id] = {
             'waiting_for_name': True,
             'waiting_for_gender': False,
@@ -670,9 +557,68 @@ async def start_dm_process(member: discord.Member):
     except Exception as e:
         print(f"❌ Error sending DM to {member.name}: {e}")
 
+@bot.event 
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """Handle reactions for registration"""
+    print(f"\n🎯 REACTION DETECTED:")
+    print(f"   Channel ID: {payload.channel_id}")
+    print(f"   Message ID: {payload.message_id}")
+    print(f"   Emoji: {payload.emoji}")
+    print(f"   User ID: {payload.user_id}")
+    
+    # Ignore bot's own reactions
+    if payload.user_id == bot.user.id:
+        print("   👆 Bot's own reaction, ignoring")
+        return
+    
+    # Check if this is in our rules channel
+    if payload.channel_id == RULES_CHANNEL_ID:
+        print(f"   📍 This is in the RULES CHANNEL!")
+        print(f"   Looking for message ID: {RULES_MESSAGE_ID}")
+        
+        # Check if it's the right message
+        if payload.message_id == RULES_MESSAGE_ID:
+            print(f"   ✅ CORRECT MESSAGE FOUND!")
+            
+            # Check if it's the green check mark
+            if str(payload.emoji) == '✅':
+                print(f"   🎉 GREEN CHECK MARK DETECTED!")
+                
+                guild = bot.get_guild(payload.guild_id)
+                if guild:
+                    member = guild.get_member(payload.user_id)
+                    if member and not member.bot:
+                        print(f"   👤 User: {member.name}")
+                        
+                        # Check if already registered
+                        if str(member.id) in registered_users:
+                            print(f"   ⚠️ User already registered")
+                            return
+                        
+                        print(f"   🚀 Starting DM process...")
+                        await start_dm_process(member)
+                    else:
+                        print(f"   ❌ Could not find member")
+            else:
+                print(f"   ❌ Wrong emoji: {payload.emoji} (expected ✅)")
+        else:
+            print(f"   ❌ Wrong message ID: {payload.message_id} (expected {RULES_MESSAGE_ID})")
+    else:
+        print(f"   ❌ Not in rules channel (expected {RULES_CHANNEL_ID})")
+    
+    # Also handle DM reactions for registration
+    channel = bot.get_channel(payload.channel_id)
+    if isinstance(channel, discord.DMChannel):
+        print(f"   💬 This is a DM reaction")
+        user = bot.get_user(payload.user_id)
+        if user and not user.bot:
+            await handle_dm_reaction(user, payload.emoji, payload.message_id)
+
 async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, message_id: int):
+    """Handle gender and team selection in DMs"""
     user_id = user.id
     
+    # Handle gender selection
     if (user_id in user_states and 
         user_states[user_id]['waiting_for_gender'] and
         user_states[user_id]['gender_message_id'] == message_id):
@@ -702,6 +648,7 @@ async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, me
         
         dm_channel = await user.create_dm()
         
+        # Send confirmation and move to team selection
         embed = discord.Embed(
             title=f"✅ Step 2 Complete!",
             description=f"{emoji_role} You selected: **{role_name}**\n\n"
@@ -725,6 +672,7 @@ async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, me
         
         print(f"✅ {user.name} selected gender: {role_name}")
     
+    # Handle team selection completion
     elif (user_id in user_states and 
           user_states[user_id]['waiting_for_teams'] and
           user_states[user_id]['team_message_id'] == message_id and
@@ -738,10 +686,12 @@ async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, me
         if not member:
             return
         
+        # Get the team message to check which reactions the user added
         dm_channel = await user.create_dm()
         try:
             team_message = await dm_channel.fetch_message(message_id)
             
+            # Check which team reactions the user has
             for reaction in team_message.reactions:
                 if str(reaction.emoji) == '🇺🇳':
                     async for reaction_user in reaction.users():
@@ -760,9 +710,11 @@ async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, me
             print(f"Error fetching team message: {e}")
             return
         
+        # Complete registration
         await complete_registration(user, member)
 
 async def complete_registration(user: discord.User, member: discord.Member):
+    """Complete the registration process"""
     user_id = user.id
     
     if user_id not in user_states:
@@ -772,17 +724,19 @@ async def complete_registration(user: discord.User, member: discord.Member):
     gender = user_states[user_id]['gender']
     teams_selected = user_states[user_id]['teams_selected']
     
+    # Set nickname based on gender
     if gender == 'mother':
         new_nickname = f"{child_name}'s Mother"
         role_name = "Mother"
         emoji_role = "👩"
-    else:
+    else:  # father
         new_nickname = f"{child_name}'s Father"
         role_name = "Father"
         emoji_role = "👨"
     
     dm_channel = await user.create_dm()
     
+    # Try to change nickname
     nickname_success = False
     try:
         await member.edit(nick=new_nickname, reason="Family Registration")
@@ -803,9 +757,13 @@ async def complete_registration(user: discord.User, member: discord.Member):
         success_msg = f"⚠️ Error setting nickname: {e}"
         print(f"❌ Error changing nickname for {user.name}: {e}")
     
+    # Assign Family Member role
     family_role_assigned = await assign_family_role(member)
+    
+    # Assign team roles
     assigned_teams = await assign_team_roles(member, teams_selected)
     
+    # Prepare team selection message
     team_message = ""
     if teams_selected:
         team_list = []
@@ -819,6 +777,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     else:
         team_message = "\n\n**Teams:** None selected - you can join teams later!"
     
+    # Prepare role assignment message
     role_msg = ""
     if family_role_assigned:
         role_msg += "✅ You have been given the **Family Member** role!\n"
@@ -830,6 +789,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     elif teams_selected:
         role_msg += "⚠️ Could not assign team roles. Please contact an administrator."
     
+    # Send final completion message
     embed = discord.Embed(
         title="🎉 Registration Complete!",
         description=f"{emoji_role} You are now registered as **{role_name}** of **{child_name}**!\n\n"
@@ -841,6 +801,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     
     await dm_channel.send(embed=embed)
     
+    # Register user data
     registered_users[str(user_id)] = {
         'child_name': child_name,
         'role': role_name,
@@ -851,291 +812,17 @@ async def complete_registration(user: discord.User, member: discord.Member):
     }
     save_registered_users(registered_users)
     
+    # Clean up
     del user_states[user_id]
     
     print(f"✅ Registration complete for {user.name} with teams: {teams_selected}")
 
-@bot.command(name="chat", aliases=["c"])
-async def chat_command(ctx, user_reference: str = None, *, message: str = None):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    if not user_reference:
-        embed = discord.Embed(
-            title="💬 Chat Commands",
-            description="**Start a chat:**\n"
-                       "`!chat USER_ID message` - Start chat with user\n"
-                       "`!chat @mention message` - Start chat with mentioned user\n\n"
-                       "**Manage conversations:**\n"
-                       "`!queue` - View pending messages\n"
-                       "`!current` - View current chat\n"
-                       "`!chats` - List all conversations\n"
-                       "`!next` - Move to next pending message\n"
-                       "`!read USER_ID` - Mark conversation as read\n",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    user = None
-    
-    if user_reference.startswith('<@') and user_reference.endswith('>'):
-        user_id = int(user_reference.strip('<@!>'))
-        user = await bot.fetch_user(user_id)
-    elif user_reference.isdigit():
-        user_id = int(user_reference)
-        user = await bot.fetch_user(user_id)
-    else:
-        guild = bot.get_guild(GUILD_ID)
-        if guild:
-            member = guild.get_member_named(user_reference)
-            if member:
-                user = member
-    
-    if not user:
-        await ctx.send(f"❌ User '{user_reference}' not found.")
-        return
-    
-    if not message:
-        conv_manager.admin_current_chat = user.id
-        conv_manager.mark_as_read(user.id)
-        
-        recent_messages = conv_manager.get_recent_messages(user.id, limit=5)
-        
-        embed = discord.Embed(
-            title=f"💬 Now chatting with {user.name}",
-            description=f"**User:** {user.mention} (`{user.id}`)\n"
-                       f"**Status:** Active chat\n\n"
-                       f"Type your message to reply (no command needed!)",
-            color=discord.Color.green()
-        )
-        
-        if recent_messages:
-            msg_list = []
-            for msg in recent_messages:
-                sender = "👤" if msg['from'] == 'user' else "👑"
-                time_str = msg['timestamp'].strftime("%H:%M")
-                content = msg['message'][:50] + "..." if len(msg['message']) > 50 else msg['message']
-                msg_list.append(f"{sender} **{time_str}:** {content}")
-            
-            embed.add_field(name="📝 Recent Messages", value="\n".join(msg_list), inline=False)
-        
-        await ctx.send(embed=embed)
-        return
-    
-    await send_message_to_user(user, message, ctx.author)
-
-@bot.command(name="queue", aliases=["q"])
-async def queue_command(ctx):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    queue_summary = conv_manager.get_queue_summary()
-    conversations = conv_manager.get_conversation_partners(limit=10)
-    
-    embed = discord.Embed(
-        title="📊 Message Queue",
-        description=f"**Pending Messages:** {queue_summary['pending']}\n"
-                   f"**Active Conversations:** {len(conversations)}\n"
-                   f"**Current Chat:** {'None' if not conv_manager.admin_current_chat else f'User ID: {conv_manager.admin_current_chat}'}",
-        color=discord.Color.blue()
-    )
-    
-    if conversations:
-        convo_list = []
-        for i, conv in enumerate(conversations[:5], 1):
-            time_diff = datetime.now() - conv['last_message']
-            minutes = int(time_diff.total_seconds() / 60)
-            
-            status = "🔴" if conv['unread'] else "🟢"
-            unread = f" ({conv['unread_count']} new)" if conv['unread_count'] > 0 else ""
-            
-            convo_list.append(
-                f"{status} **{conv['username']}** - {minutes}m ago{unread}\n"
-                f"   `!chat {conv['user_id']}` - {conv['channel']}"
-            )
-        
-        embed.add_field(name="💬 Recent Conversations", value="\n".join(convo_list), inline=False)
-    
-    if queue_summary['recent_users']:
-        embed.add_field(
-            name="👥 Recent Users",
-            value=", ".join(queue_summary['recent_users']),
-            inline=False
-        )
-    
-    embed.set_footer(text="Use !chat USER_ID to start a conversation")
-    
-    await ctx.send(embed=embed)
-
-@bot.command(name="current", aliases=["curr"])
-async def current_command(ctx):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    if not conv_manager.admin_current_chat:
-        await ctx.send("ℹ️ No active chat. Use `!queue` to see pending messages.")
-        return
-    
-    user_id = conv_manager.admin_current_chat
-    user = await bot.fetch_user(user_id)
-    
-    if not user:
-        await ctx.send("❌ Current chat user not found.")
-        conv_manager.admin_current_chat = None
-        return
-    
-    recent_messages = conv_manager.get_recent_messages(user_id, limit=10)
-    unread_count = sum(1 for msg in recent_messages if msg['from'] == 'user' and not msg.get('read', False))
-    
-    embed = discord.Embed(
-        title=f"💬 Current Chat: {user.name}",
-        description=f"**User:** {user.mention} (`{user.id}`)\n"
-                   f"**Unread Messages:** {unread_count}\n"
-                   f"**Total Messages:** {len(recent_messages)}\n\n"
-                   f"**How to reply:**\n"
-                   f"Just type your message (no command needed!)",
-        color=discord.Color.green()
-    )
-    
-    if recent_messages:
-        msg_list = []
-        for msg in recent_messages[-5:]:
-            sender = "👤 User" if msg['from'] == 'user' else "👑 You"
-            time_str = msg['timestamp'].strftime("%H:%M")
-            read_status = " 🔴" if msg['from'] == 'user' and not msg.get('read', False) else ""
-            content = msg['message'][:80] + "..." if len(msg['message']) > 80 else msg['message']
-            msg_list.append(f"**{sender}** ({time_str}){read_status}:\n{content}\n")
-        
-        embed.add_field(name="📝 Recent Messages", value="\n".join(msg_list), inline=False)
-    
-    await ctx.send(embed=embed)
-
-@bot.command(name="next", aliases=["n"])
-async def next_command(ctx):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    conversations = conv_manager.get_conversation_partners(limit=20)
-    unread_conversations = [c for c in conversations if c['unread_count'] > 0]
-    
-    if not unread_conversations:
-        await ctx.send("✅ No unread messages in queue.")
-        return
-    
-    next_conv = unread_conversations[0]
-    user = await bot.fetch_user(next_conv['user_id'])
-    
-    if not user:
-        await ctx.send(f"❌ User {next_conv['user_id']} not found.")
-        return
-    
-    conv_manager.admin_current_chat = next_conv['user_id']
-    conv_manager.mark_as_read(next_conv['user_id'])
-    
-    recent_messages = conv_manager.get_recent_messages(next_conv['user_id'], limit=5)
-    unread_messages = [m for m in recent_messages if m['from'] == 'user' and not m.get('read', False)]
-    
-    embed = discord.Embed(
-        title=f"➡️ Switched to {user.name}",
-        description=f"**User:** {user.mention} (`{user.id}`)\n"
-                   f"**Unread Messages:** {next_conv['unread_count']}\n"
-                   f"**From:** {next_conv['channel']}\n\n"
-                   f"Type your message to reply (no command needed!)",
-        color=discord.Color.blue()
-    )
-    
-    if unread_messages:
-        latest = unread_messages[-1]
-        embed.add_field(
-            name="📨 Latest Message",
-            value=latest['message'],
-            inline=False
-        )
-    
-    await ctx.send(embed=embed)
-
-@bot.command(name="read", aliases=["r"])
-async def read_command(ctx, user_id: int = None):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    if not user_id:
-        if conv_manager.admin_current_chat:
-            user_id = conv_manager.admin_current_chat
-        else:
-            await ctx.send("ℹ️ Specify a user ID: `!read USER_ID`")
-            return
-    
-    conv_manager.mark_as_read(user_id)
-    
-    user = await bot.fetch_user(user_id)
-    if user:
-        await ctx.send(f"✅ Marked conversation with {user.mention} as read.")
-    else:
-        await ctx.send(f"✅ Marked conversation with user ID `{user_id}` as read.")
-
-@bot.command(name="chats", aliases=["conv", "conversations"])
-async def chats_command(ctx):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    conversations = conv_manager.get_conversation_partners(limit=15)
-    
-    if not conversations:
-        await ctx.send("📭 No active conversations.")
-        return
-    
-    embed = discord.Embed(
-        title="💬 Active Conversations",
-        description=f"**Total:** {len(conversations)}\n"
-                   f"**Current Chat:** {'None' if not conv_manager.admin_current_chat else f'User ID: {conv_manager.admin_current_chat}'}",
-        color=discord.Color.blue()
-    )
-    
-    unread = [c for c in conversations if c['unread_count'] > 0]
-    read = [c for c in conversations if c['unread_count'] == 0]
-    
-    if unread:
-        unread_list = []
-        for conv in unread[:5]:
-            time_diff = datetime.now() - conv['last_message']
-            minutes = int(time_diff.total_seconds() / 60)
-            unread_list.append(f"🔴 **{conv['username']}** - {minutes}m ago ({conv['unread_count']} new)")
-        
-        embed.add_field(name="🔴 Unread Conversations", value="\n".join(unread_list), inline=False)
-    
-    if read:
-        read_list = []
-        for conv in read[:5]:
-            time_diff = datetime.now() - conv['last_message']
-            minutes = int(time_diff.total_seconds() / 60)
-            read_list.append(f"🟢 **{conv['username']}** - {minutes}m ago")
-        
-        embed.add_field(name="🟢 Read Conversations", value="\n".join(read_list), inline=False)
-    
-    embed.set_footer(text="Use !chat USER_ID to start a conversation")
-    
-    await ctx.send(embed=embed)
-
-@bot.command(name="clear_queue", aliases=["clear"])
-async def clear_queue_command(ctx):
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is for admin only.", ephemeral=True)
-        return
-    
-    removed = conv_manager.clear_old_conversations(hours=1)
-    await ctx.send(f"✅ Cleared {removed} old messages from queue.")
+# ========== COMMANDS ==========
 
 @bot.command(name="setup")
 @commands.has_permissions(administrator=True)
 async def setup_rules(ctx):
+    """Set up the rules message with reaction"""
     if ctx.channel.id != RULES_CHANNEL_ID:
         await ctx.send(f"⚠️ Please run this command in the rules channel (<#{RULES_CHANNEL_ID}>)")
         return
@@ -1158,6 +845,7 @@ async def setup_rules(ctx):
     rules_message = await ctx.send(embed=embed)
     await rules_message.add_reaction('✅')
     
+    # Update config with new message ID
     config['RULES_MESSAGE_ID'] = str(rules_message.id)
     with open('config.txt', 'w') as f:
         for key, value in config.items():
@@ -1166,53 +854,93 @@ async def setup_rules(ctx):
     await ctx.send(f"✅ Rules message set up! New Message ID: {rules_message.id}")
     print(f"📝 New rules message ID saved: {rules_message.id}")
 
-@bot.command(name="setup_teams")
+@bot.command(name="setup_chat_forwarding")
 @commands.has_permissions(administrator=True)
-async def setup_teams(ctx):
+async def setup_chat_forwarding(ctx):
+    """Set up chat forwarding configuration"""
     embed = discord.Embed(
-        title="🏗️ Team Setup Instructions",
-        description="To set up teams, please add the following to your config.txt file:\n\n"
-                   f"```\n"
-                   f"NATIONAL_TEAM_ROLE_ID=your_national_team_role_id_here\n"
-                   f"DEMONSTRATION_TEAM_ROLE_ID=your_demo_team_role_id_here\n"
-                   f"NATIONAL_TEAM_CHANNEL_ID=your_national_team_channel_id_here\n"
-                   f"DEMONSTRATION_TEAM_CHANNEL_ID=your_demo_team_channel_id_here\n"
-                   f"GENERAL_CHAT_CHANNEL_ID=your_general_chat_channel_id_here\n"
-                   f"ADMIN_USER_ID=your_discord_user_id_here\n"
-                   f"```\n\n"
-                   f"**Current Configuration:**\n"
-                   f"National Team Role ID: `{NATIONAL_TEAM_ROLE_ID}`\n"
-                   f"Demonstration Team Role ID: `{DEMONSTRATION_TEAM_ROLE_ID}`\n"
+        title="💬 Chat Forwarding Setup",
+        description="**How it works:**\n"
+                   "1. Messages in monitored channels are deleted\n"
+                   "2. Messages are forwarded to admin via DM\n"
+                   "3. Admin can reply directly to the forwarded message\n"
+                   "4. Replies are sent back to the user via DM\n\n"
+                   "**Current Configuration:**\n"
+                   f"General Chat Channel ID: `{GENERAL_CHAT_CHANNEL_ID}`\n"
                    f"National Team Channel ID: `{NATIONAL_TEAM_CHANNEL_ID}`\n"
                    f"Demonstration Team Channel ID: `{DEMONSTRATION_TEAM_CHANNEL_ID}`\n"
-                   f"General Chat Channel ID: `{GENERAL_CHAT_CHANNEL_ID}`\n"
-                   f"Admin User ID: `{ADMIN_USER_ID}`",
+                   f"Admin User ID: `{ADMIN_USER_ID}`\n\n"
+                   "**To change these, edit your config.txt file.**",
         color=discord.Color.blue()
     )
     
     await ctx.send(embed=embed)
 
-@bot.command(name="chat_info")
-async def chat_info(ctx):
+@bot.command(name="active_chats")
+async def active_chats(ctx):
+    """Show active 1-on-1 conversations"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    if not active_conversations:
+        embed = discord.Embed(
+            title="💭 Active Conversations",
+            description="No active conversations.",
+            color=discord.Color.grey()
+        )
+        await ctx.send(embed=embed)
+        return
+    
     embed = discord.Embed(
-        title="💬 How Chat Works",
-        description="**All messages in chat channels are forwarded to the admin via DM.**\n\n"
-                   "When you send a message in:\n"
-                   f"• <#{GENERAL_CHAT_CHANNEL_ID}> - General Chat\n"
-                   f"• <#{NATIONAL_TEAM_CHANNEL_ID}> - National Team Chat\n"
-                   f"• <#{DEMONSTRATION_TEAM_CHANNEL_ID}> - Demonstration Team Chat\n\n"
-                   "**What happens:**\n"
-                   "1. Your message is deleted from the channel\n"
-                   "2. It's sent to the admin via DM\n"
-                   "3. Admin can reply to you directly\n"
-                   "4. You'll receive responses in your DMs\n\n"
-                   "**Note:** You can also DM the bot directly to talk to the admin.",
+        title="💭 Active Conversations",
+        description=f"Currently {len(active_conversations)} active conversation(s):",
         color=discord.Color.blue()
+    )
+    
+    for user_id, conv_data in active_conversations.items():
+        guild = bot.get_guild(GUILD_ID)
+        if guild:
+            member = guild.get_member(user_id)
+            if member:
+                channel_type = conv_data.get('channel_type', 'Unknown')
+                emoji = conv_data.get('channel_emoji', '💬')
+                embed.add_field(
+                    name=f"{emoji} {member.name}",
+                    value=f"Channel: {channel_type}\nUser ID: `{user_id}`",
+                    inline=True
+                )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name="clear_chats")
+async def clear_chats(ctx):
+    """Clear all active conversations"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    count = len(active_conversations)
+    active_conversations.clear()
+    message_references.clear()
+    
+    embed = discord.Embed(
+        title="🧹 Conversations Cleared",
+        description=f"Cleared {count} active conversation(s).",
+        color=discord.Color.green()
     )
     await ctx.send(embed=embed)
 
+@bot.command(name="test_reaction")
+async def test_reaction(ctx):
+    """Test reaction detection"""
+    test_msg = await ctx.send("Test message - react with ✅ to see if bot detects it!")
+    await test_msg.add_reaction('✅')
+    await ctx.send(f"Test message ID: `{test_msg.id}` - try reacting with ✅!")
+
 @bot.command(name="debug_ids")
 async def debug_ids(ctx):
+    """Show all configured IDs"""
     embed = discord.Embed(title="🔧 Debug Info", color=discord.Color.blue())
     
     embed.add_field(name="Guild ID", value=f"`{GUILD_ID}`", inline=True)
@@ -1228,10 +956,43 @@ async def debug_ids(ctx):
     embed.add_field(name="Admin User ID", value=f"`{ADMIN_USER_ID}`", inline=True)
     embed.add_field(name="Bot User ID", value=f"`{bot.user.id}`", inline=True)
     
+    # Check if we're in the rules channel
+    if ctx.channel.id == RULES_CHANNEL_ID:
+        embed.add_field(name="✅ Channel Status", value="This IS the rules channel!", inline=False)
+    else:
+        embed.add_field(name="⚠️ Channel Status", value=f"This is NOT the rules channel.\nRules channel: <#{RULES_CHANNEL_ID}>", inline=False)
+    
     await ctx.send(embed=embed)
+
+@bot.command(name="check_message")
+async def check_message(ctx, message_id: int = None):
+    """Check a specific message's reactions"""
+    if not message_id:
+        message_id = RULES_MESSAGE_ID
+    
+    try:
+        message = await ctx.channel.fetch_message(message_id)
+        
+        embed = discord.Embed(title=f"Message {message_id}", color=discord.Color.green())
+        embed.add_field(name="Content", value=message.content[:100] + "..." if len(message.content) > 100 else message.content, inline=False)
+        
+        reactions = [str(r.emoji) for r in message.reactions]
+        if reactions:
+            embed.add_field(name="Reactions", value=", ".join(reactions), inline=False)
+        else:
+            embed.add_field(name="Reactions", value="No reactions", inline=False)
+        
+        await ctx.send(embed=embed)
+    except discord.NotFound:
+        await ctx.send(f"❌ Message {message_id} not found in this channel!")
+    except discord.Forbidden:
+        await ctx.send("❌ No permission to read this message!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
 
 @bot.command(name="force_register")
 async def force_register(ctx):
+    """Force start registration for yourself"""
     if str(ctx.author.id) in registered_users:
         await ctx.send("✅ You are already registered!", ephemeral=True)
         return
@@ -1242,6 +1003,7 @@ async def force_register(ctx):
 @bot.command(name="assign_role")
 @commands.has_permissions(administrator=True)
 async def assign_role(ctx, member: discord.Member):
+    """Manually assign Family Member role to a user"""
     success = await assign_family_role(member)
     if success:
         await ctx.send(f"✅ Assigned Family Member role to {member.mention}")
@@ -1251,6 +1013,7 @@ async def assign_role(ctx, member: discord.Member):
 @bot.command(name="update_message_id")
 @commands.has_permissions(administrator=True)
 async def update_message_id(ctx, message_id: int):
+    """Manually update the rules message ID"""
     config['RULES_MESSAGE_ID'] = str(message_id)
     with open('config.txt', 'w') as f:
         for key, value in config.items():
@@ -1261,8 +1024,10 @@ async def update_message_id(ctx, message_id: int):
 
 @bot.command(name="register_stats")
 async def register_stats(ctx):
+    """Show registration statistics"""
     total_registered = len(registered_users)
     
+    # Count team members
     national_count = 0
     demonstration_count = 0
     both_teams_count = 0
@@ -1292,29 +1057,140 @@ async def register_stats(ctx):
     
     await ctx.send(embed=embed)
 
+@bot.command(name="add_teams")
+@commands.has_permissions(administrator=True)
+async def add_teams(ctx, member: discord.Member):
+    """Allow a user to join teams after registration"""
+    user_id = member.id
+    
+    if str(user_id) not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not registered yet!", ephemeral=True)
+        return
+    
+    # Create DM channel
+    try:
+        dm_channel = await member.create_dm()
+        
+        embed = discord.Embed(
+            title="🎯 Join Teams",
+            description="Would you like to join any teams? React below:\n\n"
+                      f"🇺🇳 - Join **National Team**\n"
+                      f"🎯 - Join **Demonstration Team**\n"
+                      f"✅ - Done (skip teams or finish selection)\n\n"
+                      f"You can select multiple teams by reacting to both emojis, then react with ✅ when done.",
+            color=discord.Color.blue()
+        )
+        
+        team_message = await dm_channel.send(embed=embed)
+        await team_message.add_reaction('🇺🇳')
+        await team_message.add_reaction('🎯')
+        await team_message.add_reaction('✅')
+        
+        # Store in user states for processing
+        user_states[user_id] = {
+            'waiting_for_name': False,
+            'waiting_for_gender': False,
+            'waiting_for_teams': True,
+            'child_name': registered_users[str(user_id)]['child_name'],
+            'gender': registered_users[str(user_id)]['gender'],
+            'teams_selected': registered_users[str(user_id)].get('teams', []),
+            'team_message_id': team_message.id,
+            'adding_teams': True  # Flag to indicate adding teams after registration
+        }
+        
+        await ctx.send(f"✅ Sent team selection DM to {member.mention}", ephemeral=True)
+        
+    except discord.Forbidden:
+        await ctx.send(f"❌ Cannot send DM to {member.mention} - they might have DMs disabled", ephemeral=True)
+
+@bot.command(name="view_user")
+@commands.has_permissions(administrator=True)
+async def view_user(ctx, member: discord.Member):
+    """View a user's registration information"""
+    user_id = str(member.id)
+    
+    if user_id not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not registered yet!", ephemeral=True)
+        return
+    
+    user_data = registered_users[user_id]
+    
+    embed = discord.Embed(
+        title=f"👤 User Information: {member.name}",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="Child's Name", value=user_data['child_name'], inline=True)
+    embed.add_field(name="Role", value=user_data['role'], inline=True)
+    embed.add_field(name="Nickname", value=user_data['nickname'], inline=True)
+    
+    teams = user_data.get('teams', [])
+    if teams:
+        team_list = []
+        if "national" in teams:
+            team_list.append("National Team 🇺🇳")
+        if "demonstration" in teams:
+            team_list.append("Demonstration Team 🎯")
+        embed.add_field(name="Teams", value=", ".join(team_list), inline=True)
+    else:
+        embed.add_field(name="Teams", value="None", inline=True)
+    
+    embed.add_field(name="Registered At", value=user_data['registered_at'], inline=False)
+    embed.add_field(name="User ID", value=user_id, inline=True)
+    
+    await ctx.send(embed=embed, ephemeral=True)
+
+@bot.command(name="send_dm")
+@commands.has_permissions(administrator=True)
+async def send_dm(ctx, member: discord.Member, *, message: str):
+    """Send a DM to a user"""
+    try:
+        dm_channel = await member.create_dm()
+        embed = discord.Embed(
+            title="💬 Message from Admin",
+            description=message,
+            color=discord.Color.green(),
+            timestamp=datetime.utcnow()
+        )
+        await dm_channel.send(embed=embed)
+        await ctx.send(f"✅ DM sent to {member.mention}", ephemeral=True)
+    except discord.Forbidden:
+        await ctx.send(f"❌ Cannot send DM to {member.mention}", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ You need admin permissions for this command.", ephemeral=True)
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing required argument: {error.param.name}", ephemeral=True)
     elif isinstance(error, commands.CommandNotFound):
         pass
     else:
-        print(f"Command Error: {error}")
-        print(traceback.format_exc())
+        print(f"Error: {error}")
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Family Registration Bot...")
+    print("\n🚀 Starting Family Registration & Chat Forwarding Bot...")
     print("📝 Make sure your config.txt has the correct values!")
-    print("\nRequired config values:")
-    print("   TOKEN=your_bot_token")
-    print("   ADMIN_USER_ID=your_discord_user_id")
-    print("\nChannel values:")
-    print("   GENERAL_CHAT_CHANNEL_ID=channel_id_here")
-    print("   NATIONAL_TEAM_CHANNEL_ID=channel_id_here")
-    print("   DEMONSTRATION_TEAM_CHANNEL_ID=channel_id_here")
-    print("\nOptional team values:")
-    print("   NATIONAL_TEAM_ROLE_ID=role_id_here")
-    print("   DEMONSTRATION_TEAM_ROLE_ID=role_id_here")
+    print("\n=== REQUIRED CONFIG VALUES ===")
+    print("TOKEN=your_bot_token_here")
+    print("GUILD_ID=your_server_id_here")
+    print("RULES_CHANNEL_ID=rules_channel_id_here")
+    print("FAMILY_ROLE_ID=family_role_id_here")
+    print("ADMIN_USER_ID=your_discord_user_id_here")
+    print("\n=== OPTIONAL (but recommended) ===")
+    print("GENERAL_CHAT_CHANNEL_ID=general_chat_channel_id_here")
+    print("NATIONAL_TEAM_CHANNEL_ID=national_team_channel_id_here")
+    print("DEMONSTRATION_TEAM_CHANNEL_ID=demonstration_team_channel_id_here")
+    print("NATIONAL_TEAM_ROLE_ID=national_team_role_id_here")
+    print("DEMONSTRATION_TEAM_ROLE_ID=demonstration_team_role_id_here")
+    print("\n=== HOW IT WORKS ===")
+    print("1. Users react to ✅ in rules channel to register")
+    print("2. Registration happens via DM")
+    print("3. Messages in monitored channels are forwarded to admin")
+    print("4. Admin can reply directly to forwarded messages")
+    print("5. All original messages in channels are deleted")
     print()
     
     if not TOKEN:
@@ -1324,7 +1200,8 @@ if __name__ == "__main__":
     
     if not ADMIN_USER_ID:
         print("⚠️ WARNING: ADMIN_USER_ID not set in config.txt")
-        print("   Add: ADMIN_USER_ID=your_discord_user_id")
+        print("   Chat forwarding will not work without this!")
+        print("   Please add: ADMIN_USER_ID=your_discord_user_id_here")
     
     try:
         bot.run(TOKEN)
@@ -1333,4 +1210,3 @@ if __name__ == "__main__":
         print("   Please check your token in config.txt")
     except Exception as e:
         print(f"❌ ERROR starting bot: {e}")
-        print(traceback.format_exc())
