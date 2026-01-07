@@ -104,6 +104,271 @@ if NATIONAL_TEAM_CHANNEL_ID:
 if DEMONSTRATION_TEAM_CHANNEL_ID:
     MONITORED_CHANNELS.append(DEMONSTRATION_TEAM_CHANNEL_ID)
 
+# ========== NAME VALIDATION AND CLEANING FUNCTIONS ==========
+
+def clean_name(name: str) -> str:
+    """Clean and format a name string"""
+    if not name:
+        return ""
+    
+    # Remove extra spaces, tabs, newlines
+    cleaned = ' '.join(name.strip().split())
+    
+    # Capitalize first letter of each word
+    # Handle special cases like "McDonald", "O'Brien", etc.
+    parts = cleaned.split()
+    capitalized_parts = []
+    
+    for part in parts:
+        if '-' in part:
+            # Handle hyphenated names like "Smith-Jones"
+            subparts = part.split('-')
+            capitalized_subparts = [sub.capitalize() for sub in subparts]
+            capitalized_parts.append('-'.join(capitalized_subparts))
+        elif part.startswith("Mc") and len(part) > 2:
+            # Handle names like "McDonald"
+            capitalized_parts.append("Mc" + part[2:].capitalize())
+        elif part.startswith("Mac") and len(part) > 3:
+            # Handle names like "MacDonald"
+            capitalized_parts.append("Mac" + part[3:].capitalize())
+        elif "'" in part:
+            # Handle names like "O'Brien"
+            apostrophe_idx = part.find("'")
+            if apostrophe_idx > 0:
+                capitalized_parts.append(part[:apostrophe_idx].capitalize() + "'" + part[apostrophe_idx + 1:].capitalize())
+            else:
+                capitalized_parts.append(part.capitalize())
+        else:
+            capitalized_parts.append(part.capitalize())
+    
+    return ' '.join(capitalized_parts)
+
+def validate_name_format(name: str) -> tuple[bool, str]:
+    """Validate name format and return (is_valid, error_message)"""
+    if not name:
+        return False, "❌ Please enter a name."
+    
+    # Check length
+    if len(name) < 2:
+        return False, "❌ Name must be at least 2 characters long."
+    if len(name) > 50:
+        return False, "❌ Name cannot exceed 50 characters."
+    
+    # Check for valid characters (allow letters, spaces, hyphens, apostrophes)
+    if not all(c.isalpha() or c.isspace() or c in "-'." for c in name):
+        return False, "❌ Name can only contain letters, spaces, hyphens (-), apostrophes ('), and periods (.)"
+    
+    # Check for at least two parts (first and last name)
+    parts = name.split()
+    if len(parts) < 2:
+        return False, "❌ Please enter both first and last name (e.g., 'John Smith')."
+    
+    # Check each part
+    for i, part in enumerate(parts):
+        if not part.strip("-.'"):  # Check if part is empty or just special chars
+            return False, "❌ Each name part must contain letters."
+        if len(part.strip("-.'")) < 2:
+            return False, f"❌ Each name part must be at least 2 letters long. '{part}' is too short."
+    
+    # Check for too many parts (likely a mistake)
+    if len(parts) > 4:
+        return False, "❌ Too many name parts detected. Please enter just first and last name."
+    
+    return True, ""
+
+# ========== REGISTRATION BUTTON VIEWS ==========
+
+class NameConfirmationView(discord.ui.View):
+    """View for confirming or changing the entered name"""
+    def __init__(self, user_id: int, cleaned_name: str, original_input: str):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+        self.cleaned_name = cleaned_name
+        self.original_input = original_input
+    
+    @discord.ui.button(label="✅ Yes, This is Correct", style=discord.ButtonStyle.green, emoji="✅")
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
+            return
+        
+        # Update user state with confirmed name
+        if self.user_id in user_states:
+            user_states[self.user_id]['child_name'] = self.cleaned_name
+            user_states[self.user_id]['waiting_for_name'] = False
+            user_states[self.user_id]['waiting_for_name_confirmation'] = False
+            user_states[self.user_id]['waiting_for_role'] = True
+        
+        # Disable all buttons
+        for child in self.children:
+            child.disabled = True
+        
+        await interaction.response.edit_message(content=f"✅ **Name confirmed:** {self.cleaned_name}\n\nNow let's continue with registration...", view=self)
+        
+        # Move to role selection
+        await asyncio.sleep(1.5)
+        
+        # Send role selection message with buttons
+        dm_channel = await interaction.user.create_dm()
+        embed = discord.Embed(
+            title="👨‍👩‍👧‍👦 Select Your Role",
+            description=f"**Step 2 of 3**: Are you the mother or father of **{self.cleaned_name}**?\n\n"
+                      "Please select your role below:",
+            color=discord.Color.green()
+        )
+        
+        view = RoleSelectView(self.user_id, self.cleaned_name)
+        await dm_channel.send(embed=embed, view=view)
+        
+        print(f"👤 {interaction.user.name} confirmed name and moved to role selection")
+
+class RoleSelectView(discord.ui.View):
+    """View for selecting mother/father role"""
+    def __init__(self, user_id: int, child_name: str):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+        self.child_name = child_name
+    
+    @discord.ui.button(label="👩 Mother", style=discord.ButtonStyle.blurple, emoji="👩")
+    async def mother_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_role_selection(interaction, "mother", "👩 Mother")
+    
+    @discord.ui.button(label="👨 Father", style=discord.ButtonStyle.blurple, emoji="👨")
+    async def father_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_role_selection(interaction, "father", "👨 Father")
+    
+    async def handle_role_selection(self, interaction: discord.Interaction, role: str, role_display: str):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
+            return
+        
+        # Update user state
+        if self.user_id in user_states:
+            user_states[self.user_id]['gender'] = role
+            user_states[self.user_id]['role_display'] = role_display
+            user_states[self.user_id]['waiting_for_role'] = False
+            user_states[self.user_id]['waiting_for_teams'] = True
+        
+        # Disable all buttons
+        for child in self.children:
+            child.disabled = True
+        
+        # Update the message
+        embed = discord.Embed(
+            title="✅ Role Selected!",
+            description=f"You selected: **{role_display}**\n\n"
+                      f"**Step 3 of 3**: Team Selection\n\n"
+                      f"Would you like to join any teams?",
+            color=discord.Color.green()
+        )
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+        # Send team selection view
+        await asyncio.sleep(1.5)
+        
+        dm_channel = await interaction.user.create_dm()
+        team_embed = discord.Embed(
+            title="🎯 Team Selection",
+            description="Select which teams you'd like to join:\n\n"
+                      "🇺🇳 **National Team** - For competitive athletes\n"
+                      "🎯 **Demonstration Team** - For performances and shows\n\n"
+                      "You can select one, both, or none.\n"
+                      "Click **✅ Done** when finished.",
+            color=discord.Color.blue()
+        )
+        
+        view = TeamSelectView(self.user_id, self.child_name, role)
+        await dm_channel.send(embed=team_embed, view=view)
+        
+        print(f"👤 {interaction.user.name} selected role: {role_display}")
+
+class TeamSelectView(discord.ui.View):
+    """View for selecting teams (multiple selection allowed)"""
+    def __init__(self, user_id: int, child_name: str, role: str):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+        self.child_name = child_name
+        self.role = role
+        self.selected_teams = set()  # Store selected teams
+        
+        # Initialize buttons with default state
+        self.national_button = None
+        self.demonstration_button = None
+        
+    @discord.ui.button(label="National Team", style=discord.ButtonStyle.gray, emoji="🇺🇳", row=0)
+    async def national_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.toggle_team(interaction, button, "national", "National Team")
+    
+    @discord.ui.button(label="Demonstration Team", style=discord.ButtonStyle.gray, emoji="🎯", row=0)
+    async def demonstration_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.toggle_team(interaction, button, "demonstration", "Demonstration Team")
+    
+    @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.green, emoji="✅", row=1)
+    async def done_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
+            return
+        
+        # Update user state with selected teams
+        if self.user_id in user_states:
+            user_states[self.user_id]['teams_selected'] = list(self.selected_teams)
+            user_states[self.user_id]['waiting_for_teams'] = False
+        
+        # Disable all buttons
+        for child in self.children:
+            child.disabled = True
+        
+        # Update the message
+        teams_text = "No teams selected"
+        if self.selected_teams:
+            team_list = []
+            if "national" in self.selected_teams:
+                team_list.append("National Team 🇺🇳")
+            if "demonstration" in self.selected_teams:
+                team_list.append("Demonstration Team 🎯")
+            teams_text = ", ".join(team_list)
+        
+        embed = discord.Embed(
+            title="✅ Team Selection Complete!",
+            description=f"**Selected teams:** {teams_text}\n\n"
+                      "Finishing registration...",
+            color=discord.Color.green()
+        )
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+        # Complete registration
+        await asyncio.sleep(1.5)
+        guild = bot.get_guild(GUILD_ID)
+        member = guild.get_member(self.user_id) if guild else None
+        user = interaction.user
+        
+        if member:
+            await complete_registration(user, member)
+        else:
+            await interaction.followup.send("❌ Could not find you in the server. Please try again.", ephemeral=True)
+    
+    async def toggle_team(self, interaction: discord.Interaction, button: discord.ui.Button, team: str, team_display: str):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
+            return
+        
+        # Toggle team selection
+        if team in self.selected_teams:
+            self.selected_teams.remove(team)
+            button.style = discord.ButtonStyle.gray
+            button.label = team_display
+            print(f"👤 {interaction.user.name} deselected {team_display}")
+        else:
+            self.selected_teams.add(team)
+            button.style = discord.ButtonStyle.green
+            button.label = f"✓ {team_display}"
+            print(f"👤 {interaction.user.name} selected {team_display}")
+        
+        # Update the button
+        await interaction.response.edit_message(view=self)
+
 # ========== NEW CLASSES FOR TEMPORARY CHANNELS WITH BUTTONS ==========
 
 class DeleteChannelView(discord.ui.View):
@@ -237,10 +502,30 @@ async def create_temporary_channel(guild: discord.Guild, user: discord.Member, o
         
         # Create channel with appropriate permissions
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.get_member(ADMIN_USER_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
+            guild.default_role: discord.PermissionOverwrite(read_messages=False, read_message_history=False),
+            user: discord.PermissionOverwrite(
+                read_messages=True, 
+                send_messages=True, 
+                read_message_history=True,  # Added this
+                attach_files=True,  # Optional: if you want users to send attachments
+                embed_links=True    # Optional: if you want users to embed links
+            ),
+            guild.get_member(ADMIN_USER_ID): discord.PermissionOverwrite(
+                read_messages=True, 
+                send_messages=True, 
+                read_message_history=True,
+                manage_channels=True,
+                manage_messages=True,
+                manage_permissions=True
+            ),
+            guild.me: discord.PermissionOverwrite(
+                read_messages=True, 
+                send_messages=True, 
+                read_message_history=True,
+                manage_channels=True,
+                manage_messages=True,
+                manage_permissions=True
+            )
         }
         
         # Create the channel
@@ -260,39 +545,32 @@ async def create_temporary_channel(guild: discord.Guild, user: discord.Member, o
             'last_activity': current_time,
             'delete_button_sent': False,
             'delete_button_message_id': None,
+            'last_button_sent_time': 0,  # Add this new field
             'original_channel': original_channel_name,
             'user_name': user.name
         }
         user_temporary_channels[user.id] = channel.id
         
         # Send welcome message with instructions
-        embed = discord.Embed(
-            title="🔒 Private Conversation",
-            description=f"Welcome {user.mention}!\n\n"
-                       f"This is a private channel between you and the admin.\n"
-                       f"Messages from **#{original_channel_name}** will appear here.\n\n"
-                       f"**After {INACTIVITY_TIMEOUT//3600} hours of inactivity, a delete button will appear (admin only).**",
-            color=discord.Color.blue()
+        welcome_msg = await channel.send(
+            f"🔒 Private conversation for {user.mention}\n"
+            f"Messages from #{original_channel_name} will appear here.\n"
+            f"Only you and admin can see this channel.\n"
+            f"After {INACTIVITY_TIMEOUT//3600} hours of inactivity, a delete button will appear (admin only)."
         )
-        embed.set_footer(text=f"Channel created at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        welcome_msg = await channel.send(embed=embed)
         
         # Send initial instructions to admin
         admin_user = guild.get_member(ADMIN_USER_ID)
         if admin_user:
             try:
                 admin_dm = await admin_user.create_dm()
-                admin_embed = discord.Embed(
-                    title="🔔 New Temporary Channel Created",
-                    description=f"A temporary channel has been created for conversation with **{user.name}**\n\n"
-                               f"**Channel:** #{channel.name}\n"
-                               f"**User:** {user.mention} (`{user.id}`)\n"
-                               f"**From:** #{original_channel_name}\n\n"
-                               f"You can delete this channel at any time using the `!close_channel` command in the channel.",
-                    color=discord.Color.green()
+                await admin_dm.send(
+                    f"🔔 New temporary channel created\n"
+                    f"User: {user.name} ({user.id})\n"
+                    f"From: #{original_channel_name}\n"
+                    f"Channel: #{channel.name}\n"
+                    f"Use !close_channel in the channel to delete it."
                 )
-                await admin_dm.send(embed=admin_embed)
             except:
                 pass
         
@@ -333,9 +611,10 @@ async def send_delete_button_helper(channel: discord.TextChannel):
         # Send message with button
         button_msg = await channel.send(embed=embed, view=view)
         
-        # Update channel data
+        # Update channel data - mark that button was sent
         temporary_channels[channel.id]['delete_button_sent'] = True
         temporary_channels[channel.id]['delete_button_message_id'] = button_msg.id
+        temporary_channels[channel.id]['last_button_sent_time'] = current_time
         
         print(f"⏰ Sent delete button for inactive channel #{channel.name}")
         
@@ -380,13 +659,23 @@ async def check_inactive_channels(guild: discord.Guild):
         # Check if channel is inactive
         inactive_time = current_time - data['last_activity']
         
-        # Send delete button after inactivity timeout
-        if inactive_time >= INACTIVITY_TIMEOUT and not data['delete_button_sent']:
-            await send_delete_button_helper(channel)  # Changed from send_delete_button
+        # Check if we need to send delete button
+        # Only send if:
+        # 1. Channel is inactive for the timeout period
+        # 2. Button hasn't been sent for this inactivity period
+        # 3. There's been activity since the last button was sent
+        if (inactive_time >= INACTIVITY_TIMEOUT and 
+            not data.get('delete_button_sent', False) and
+            data['last_activity'] > data.get('last_button_sent_time', 0)):
+            
+            await send_delete_button_helper(channel)
+            # Mark that button was sent
+            temporary_channels[channel_id]['delete_button_sent'] = True
+            temporary_channels[channel_id]['last_button_sent_time'] = current_time
         
-        # If button was sent but there's been activity since, remove the button
-        elif data['delete_button_sent'] and inactive_time < INACTIVITY_TIMEOUT:
-            # Remove the delete button message
+        # If activity resumed, reset the button sent flag
+        elif data.get('delete_button_sent', False) and inactive_time < INACTIVITY_TIMEOUT:
+            # Remove any existing delete button
             button_msg_id = data.get('delete_button_message_id')
             if button_msg_id:
                 try:
@@ -396,9 +685,10 @@ async def check_inactive_channels(guild: discord.Guild):
                 except:
                     pass
             
-            # Reset button sent flag
+            # Reset button sent flag to allow future button sending
             temporary_channels[channel_id]['delete_button_sent'] = False
             temporary_channels[channel_id]['delete_button_message_id'] = None
+            # Keep the last_button_sent_time so we know when last button was sent
 
 async def cleanup_user_data(user_id: int):
     """Clean up all data for a user when they leave"""
@@ -712,7 +1002,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
 @bot.event 
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Handle reactions for registration"""
+    """Handle reactions for registration - only for green check mark on rules"""
     print(f"\n🎯 REACTION DETECTED:")
     print(f"   Channel ID: {payload.channel_id}")
     print(f"   Message ID: {payload.message_id}")
@@ -771,14 +1061,6 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             print(f"   ❌ Wrong message ID: {payload.message_id} (expected {RULES_MESSAGE_ID})")
     else:
         print(f"   ❌ Not in rules channel (expected {RULES_CHANNEL_ID})")
-    
-    # Also handle DM reactions for registration
-    channel = bot.get_channel(payload.channel_id)
-    if isinstance(channel, discord.DMChannel):
-        print(f"   💬 This is a DM reaction")
-        user = bot.get_user(payload.user_id)
-        if user and not user.bot:
-            await handle_dm_reaction(user, payload.emoji, payload.message_id)
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -798,12 +1080,11 @@ async def on_message(message: discord.Message):
         except discord.NotFound:
             pass  # Message already deleted
     
-    # Handle messages in temporary channels
     elif message.channel.id in temporary_channels:
         # Update last activity for this channel
         temporary_channels[message.channel.id]['last_activity'] = time.time()
         
-        # If delete button was sent, remove it
+        # If delete button was sent, remove it and reset the flag
         data = temporary_channels[message.channel.id]
         if data['delete_button_sent']:
             button_msg_id = data.get('delete_button_message_id')
@@ -815,16 +1096,15 @@ async def on_message(message: discord.Message):
                 except:
                     pass
             
-            # Reset button sent flag
+            # Reset button sent flag to allow future button sending
             temporary_channels[message.channel.id]['delete_button_sent'] = False
             temporary_channels[message.channel.id]['delete_button_message_id'] = None
         
         print(f'💬 Message in temporary channel #{message.channel.name}')
         
-        # IMPORTANT: Process commands in temporary channels too!
-        # This allows commands like !send_delete_button to work
+        # Process commands
         await bot.process_commands(message)
-        return  # Return early so we don't double-process commands
+        return
     
     # Handle DMs to the bot (from admin or users)
     elif isinstance(message.channel, discord.DMChannel):
@@ -841,6 +1121,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ========== MESSAGE HANDLING FUNCTIONS ==========
+
 async def handle_monitored_channel_message(message: discord.Message):
     """Handle messages from monitored channels by creating/using temporary channels"""
     # Acquire lock to prevent overlapping operations
@@ -855,72 +1136,49 @@ async def handle_monitored_channel_message(message: discord.Message):
             print(f"❌ Failed to create temporary channel for {user.name}")
             return
         
-        # Determine which channel the message came from
+        # Create simple text message (no embed)
         channel_name = message.channel.name
-        channel_type = ""
-        emoji = ""
-        if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
-            channel_type = "General Chat"
-            emoji = "👥"
-        elif message.channel.id == NATIONAL_TEAM_CHANNEL_ID:
-            channel_type = "National Team Chat"
-            emoji = "🇺🇳"
-        elif message.channel.id == DEMONSTRATION_TEAM_CHANNEL_ID:
-            channel_type = "Demonstration Team Chat"
-            emoji = "🎯"
-        else:
-            channel_type = f"#{channel_name}"
-            emoji = "💬"
         
-        # Create embed for the message
-        embed = discord.Embed(
-            title=f"{emoji} Message from {channel_type}",
-            description=message.content,
-            color=discord.Color.blue(),
-            timestamp=message.created_at
-        )
+        # Simple message format: who sent it and from where
+        text_content = f"**{user.name}** (from #{channel_name}):\n{message.content}"
         
-        # Add author info
-        embed.set_author(
-            name=f"{message.author.name} ({message.author.nick if message.author.nick else 'No nickname'})",
-            icon_url=message.author.avatar.url if message.author.avatar else None
-        )
-        
-        # Add metadata
-        embed.add_field(name="👤 Author", value=f"{message.author.mention}", inline=True)
-        embed.add_field(name="📝 Original Channel", value=f"#{channel_name}", inline=True)
-        
-        # Handle attachments
+        # Handle attachments if any
+        attachment_text = ""
         if message.attachments:
-            attachment_info = []
-            for i, attachment in enumerate(message.attachments[:3]):
-                if hasattr(attachment, 'content_type') and attachment.content_type and 'image' in attachment.content_type:
-                    attachment_info.append(f"📸 [Image {i+1}]({attachment.url})")
-                elif hasattr(attachment, 'filename'):
-                    attachment_info.append(f"📎 [{attachment.filename}]({attachment.url})")
-                else:
-                    attachment_info.append(f"📎 [Attachment {i+1}]({attachment.url})")
-            
-            if len(message.attachments) > 3:
-                attachment_info.append(f"...and {len(message.attachments) - 3} more")
-            
-            embed.add_field(name="📎 Attachments", value="\n".join(attachment_info), inline=False)
-            
-            # Also send first image as image in embed if available
-            image_attachments = [a for a in message.attachments if hasattr(a, 'content_type') and a.content_type and 'image' in a.content_type]
-            if image_attachments:
-                embed.set_image(url=image_attachments[0].url)
+            attachment_links = []
+            for i, attachment in enumerate(message.attachments):
+                attachment_links.append(f"📎 Attachment {i+1}: {attachment.url}")
+            attachment_text = "\n" + "\n".join(attachment_links)
         
-        embed.set_footer(text="Reply in this channel to continue the conversation")
+        # Combine content and attachments
+        final_message = text_content + attachment_text
         
         try:
-            # Send the message in temporary channel FIRST
-            await temp_channel.send(embed=embed)
-            print(f'📤 Forwarded message from {message.author.name} in {channel_type} to temporary channel')
+            # Send the simple message in temporary channel
+            sent_msg = await temp_channel.send(final_message)
+            print(f'📤 Forwarded simple message from {message.author.name} in #{channel_name} to temporary channel')
+            
+            # Try to notify user with @mention in the channel
+            try:
+                await temp_channel.send(f"{user.mention} - Your message has been moved here from #{channel_name}")
+            except:
+                pass  # If we can't mention, that's okay
             
             # Delete the original message AFTER successful forwarding
             await message.delete()
             print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
+            
+        except discord.Forbidden as e:
+            print(f'❌ Permission error: {e}')
+            # Try to send a DM to the user to let them know
+            try:
+                dm_channel = await user.create_dm()
+                await dm_channel.send(
+                    f"📨 Your message in #{channel_name} was received, but there was a permission issue. "
+                    f"Please check the temporary channel #{temp_channel.name} if you can see it."
+                )
+            except:
+                pass
             
         except discord.HTTPException as e:
             print(f'⚠️ Discord API rate limit or error: {e}')
@@ -929,14 +1187,19 @@ async def handle_monitored_channel_message(message: discord.Message):
                 print(f'⏳ Rate limited, retry after: {retry_after} seconds')
                 await asyncio.sleep(retry_after)
                 
-                # Try deleting again after backoff
+                # Try sending again after backoff
+                try:
+                    sent_msg = await temp_channel.send(final_message)
+                    print(f'📤 Retry successful for {user.name}')
+                except Exception as retry_error:
+                    print(f'❌ Retry failed: {retry_error}')
+                
+                # Try deleting the original message
                 try:
                     await message.delete()
                     print(f'🗑️ Deleted message after rate limit backoff')
                 except:
                     pass
-        except discord.Forbidden:
-            print(f'❌ Cannot delete message in #{message.channel.name} - check bot permissions')
         except discord.NotFound:
             pass  # Message already deleted
         except Exception as e:
@@ -1088,46 +1351,65 @@ async def handle_user_dm_response(message: discord.Message):
                 print(f'❌ Error forwarding user response: {e}')
 
 async def handle_registration_dm(message: discord.Message):
-    """Handle registration DMs (existing functionality)"""
+    """Handle registration DMs (name entry only, buttons handle the rest)"""
     user_id = message.author.id
     
     if user_id in user_states and user_states[user_id]['waiting_for_name']:
-        child_name = message.content.strip()
+        original_name = message.content.strip()
         
-        # Basic validation
-        if len(child_name) < 2 or len(child_name) > 30:
-            await message.channel.send("❌ Name must be 2-30 characters.")
+        # Validate name format
+        is_valid, error_msg = validate_name_format(original_name)
+        if not is_valid:
+            await message.channel.send(f"{error_msg}\n\nPlease try again:")
             return
         
-        if not all(c.isalnum() or c.isspace() or c in ".-'" for c in child_name):
-            await message.channel.send("❌ Please use only letters, numbers, spaces, and basic punctuation.")
-            return
+        # Clean and format the name
+        cleaned_name = clean_name(original_name)
         
-        user_states[user_id]['child_name'] = child_name
+        # Store original and cleaned name
+        user_states[user_id]['child_name_original'] = original_name
+        user_states[user_id]['child_name_cleaned'] = cleaned_name
+        
+        # Change state to waiting for confirmation
         user_states[user_id]['waiting_for_name'] = False
-        user_states[user_id]['waiting_for_gender'] = True
+        user_states[user_id]['waiting_for_name_confirmation'] = True
         
-        print(f"📝 {message.author.name} entered child name: {child_name}")
+        print(f"📝 {message.author.name} entered name: '{original_name}' -> cleaned: '{cleaned_name}'")
         
+        # Send confirmation message with buttons
         embed = discord.Embed(
-            title="👨‍👩‍👧‍👦 Select Your Role",
-            description=f"**Step 2 of 3**: Are you the mother or father of **{child_name}**?\n\n"
-                      "👩 - I am the **Mother**\n"
-                      "👨 - I am the **Father**\n\n"
-                      "React with the appropriate emoji below:",
-            color=discord.Color.green()
+            title="🔍 Please Confirm the Name",
+            description="I've cleaned up and formatted the name. Please check if this is correct:",
+            color=discord.Color.gold()
+        )
+        embed.add_field(
+            name="📝 You entered:",
+            value=f"```{original_name}```",
+            inline=False
+        )
+        embed.add_field(
+            name="✅ Formatted to:",
+            value=f"```{cleaned_name}```",
+            inline=False
+        )
+        embed.add_field(
+            name="❓ Is this correct?",
+            value="Please select an option below:",
+            inline=False
         )
         
-        gender_message = await message.channel.send(embed=embed)
-        await gender_message.add_reaction('👩')
-        await gender_message.add_reaction('👨')
+        view = NameConfirmationView(user_id, cleaned_name, original_name)
+        await message.channel.send(embed=embed, view=view)
         
-        user_states[user_id]['gender_message_id'] = gender_message.id
+    elif user_id in user_states and user_states[user_id]['waiting_for_name_confirmation']:
+        # User sent a text message while waiting for confirmation
+        await message.channel.send("⚠️ Please use the buttons above to confirm or change the name.")
         
-    elif user_id in user_states and user_states[user_id]['waiting_for_gender']:
-        await message.channel.send("⚠️ Please select by reacting to the message above with 👩 or 👨.")
+    elif user_id in user_states and user_states[user_id]['waiting_for_role']:
+        await message.channel.send("⚠️ Please select your role using the buttons above.")
+        
     elif user_id in user_states and user_states[user_id]['waiting_for_teams']:
-        await message.channel.send("⚠️ Please select teams by reacting to the message above with 🇺🇳, 🎯, or ✅ when done.")
+        await message.channel.send("⚠️ Please select teams using the buttons above.")
 
 # ========== REGISTRATION FUNCTIONS ==========
 
@@ -1199,21 +1481,49 @@ async def start_dm_process(member: discord.Member):
                       "I'll guide you through 3 steps:",
             color=discord.Color.blue()
         )
-        embed.add_field(name="Step 1", value="Please type your child's FIRST and LAST NAME", inline=True)
+        embed.add_field(name="Step 1: Child's Name", value="Please type your child's **FIRST and LAST NAME** (e.g., 'John Smith')", inline=False)
+        embed.add_field(name="Step 2: Your Role", value="Select if you're the mother or father", inline=False)
+        embed.add_field(name="Step 3: Teams", value="Choose which teams to join (optional)", inline=False)
         
         await dm_channel.send(embed=embed)
         await asyncio.sleep(1)
         
-        # Initialize user state
+        # Send helpful tips
+        tips_embed = discord.Embed(
+            title="💡 Name Entry Tips",
+            description="**How to enter the name correctly:**",
+            color=discord.Color.blue()
+        )
+        tips_embed.add_field(
+            name="✅ Do:",
+            value="• Include both first and last name\n"
+                  "• Use proper spacing (I'll fix extra spaces)\n"
+                  "• Example: 'Michael Johnson'",
+            inline=False
+        )
+        tips_embed.add_field(
+            name="❌ Don't:",
+            value="• Use nicknames only\n"
+                  "• Include middle names unless necessary\n"
+                  "• Add extra symbols or numbers",
+            inline=False
+        )
+        tips_embed.set_footer(text="I'll show you the formatted name for confirmation before proceeding.")
+        
+        await dm_channel.send(embed=tips_embed)
+        
+        # Initialize user state with new button-based flags
         user_states[member.id] = {
             'waiting_for_name': True,
-            'waiting_for_gender': False,
+            'waiting_for_name_confirmation': False,
+            'waiting_for_role': False,  # Changed from waiting_for_gender
             'waiting_for_teams': False,
             'child_name': None,
+            'child_name_original': None,
+            'child_name_cleaned': None,
             'gender': None,
             'teams_selected': [],
-            'gender_message_id': None,
-            'team_message_id': None
+            'role_display': None
         }
         
         print(f"✅ DM sent to {member.name}")
@@ -1222,105 +1532,6 @@ async def start_dm_process(member: discord.Member):
         print(f"❌ Cannot send DM to {member.name} - they might have DMs disabled")
     except Exception as e:
         print(f"❌ Error sending DM to {member.name}: {e}")
-
-async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, message_id: int):
-    """Handle gender and team selection in DMs"""
-    user_id = user.id
-    
-    # Handle gender selection
-    if (user_id in user_states and 
-        user_states[user_id]['waiting_for_gender'] and
-        user_states[user_id]['gender_message_id'] == message_id):
-        
-        guild = bot.get_guild(GUILD_ID)
-        if not guild:
-            return
-        
-        member = guild.get_member(user_id)
-        if not member:
-            return
-        
-        child_name = user_states[user_id]['child_name']
-        
-        if str(emoji) == '👩':
-            new_nickname = f"{child_name}'s Mother"
-            role_name = "Mother"
-            emoji_role = "👩"
-            user_states[user_id]['gender'] = 'mother'
-        elif str(emoji) == '👨':
-            new_nickname = f"{child_name}'s Father"
-            role_name = "Father"
-            emoji_role = "👨"
-            user_states[user_id]['gender'] = 'father'
-        else:
-            return
-        
-        dm_channel = await user.create_dm()
-        
-        # Send confirmation and move to team selection
-        embed = discord.Embed(
-            title=f"✅ Step 2 Complete!",
-            description=f"{emoji_role} You selected: **{role_name}**\n\n"
-                      f"**Step 3 of 3**: Team Selection\n\n"
-                      f"Would you like to join any teams? React below:\n\n"
-                      f"🇺🇳 - Join **National Team**\n"
-                      f"🎯 - Join **Demonstration Team**\n"
-                      f"✅ - Done (skip teams or finish selection)\n\n"
-                      f"You can select multiple teams by reacting to both emojis, then react with ✅ when done.",
-            color=discord.Color.blue()
-        )
-        
-        team_message = await dm_channel.send(embed=embed)
-        await team_message.add_reaction('🇺🇳')
-        await team_message.add_reaction('🎯')
-        await team_message.add_reaction('✅')
-        
-        user_states[user_id]['waiting_for_gender'] = False
-        user_states[user_id]['waiting_for_teams'] = True
-        user_states[user_id]['team_message_id'] = team_message.id
-        
-        print(f"✅ {user.name} selected gender: {role_name}")
-    
-    # Handle team selection completion
-    elif (user_id in user_states and 
-          user_states[user_id]['waiting_for_teams'] and
-          user_states[user_id]['team_message_id'] == message_id and
-          str(emoji) == '✅'):
-        
-        guild = bot.get_guild(GUILD_ID)
-        if not guild:
-            return
-        
-        member = guild.get_member(user_id)
-        if not member:
-            return
-        
-        # Get the team message to check which reactions the user added
-        dm_channel = await user.create_dm()
-        try:
-            team_message = await dm_channel.fetch_message(message_id)
-            
-            # Check which team reactions the user has
-            for reaction in team_message.reactions:
-                if str(reaction.emoji) == '🇺🇳':
-                    async for reaction_user in reaction.users():
-                        if reaction_user.id == user_id:
-                            if "national" not in user_states[user_id]['teams_selected']:
-                                user_states[user_id]['teams_selected'].append("national")
-                            break
-                
-                elif str(reaction.emoji) == '🎯':
-                    async for reaction_user in reaction.users():
-                        if reaction_user.id == user_id:
-                            if "demonstration" not in user_states[user_id]['teams_selected']:
-                                user_states[user_id]['teams_selected'].append("demonstration")
-                            break
-        except Exception as e:
-            print(f"Error fetching team message: {e}")
-            return
-        
-        # Complete registration
-        await complete_registration(user, member)
 
 async def complete_registration(user: discord.User, member: discord.Member):
     """Complete the registration process"""
@@ -1331,6 +1542,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     
     child_name = user_states[user_id]['child_name']
     gender = user_states[user_id]['gender']
+    role_display = user_states[user_id]['role_display']
     teams_selected = user_states[user_id]['teams_selected']
     
     # Set nickname based on gender
@@ -1401,7 +1613,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     # Send final completion message
     embed = discord.Embed(
         title="🎉 Registration Complete!",
-        description=f"{emoji_role} You are now registered as **{role_name}** of **{child_name}**!\n\n"
+        description=f"{emoji_role} You are now registered as **{role_display}** of **{child_name}**!\n\n"
                   f"{success_msg}\n\n"
                   f"{role_msg}{team_message}\n\n"
                   f"Welcome to the family!",
@@ -1414,6 +1626,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     registered_users[str(user_id)] = {
         'child_name': child_name,
         'role': role_name,
+        'role_display': role_display,
         'nickname': new_nickname,
         'gender': gender,
         'teams': teams_selected,
@@ -1928,6 +2141,7 @@ async def register_stats(ctx):
     
     await ctx.send(embed=embed)
 
+# New command for adding teams with buttons
 @bot.command(name="add_teams")
 @commands.has_permissions(administrator=True)
 async def add_teams(ctx, member: discord.Member):
@@ -1942,32 +2156,22 @@ async def add_teams(ctx, member: discord.Member):
     try:
         dm_channel = await member.create_dm()
         
+        user_data = registered_users[str(user_id)]
+        child_name = user_data['child_name']
+        gender = user_data['gender']
+        
         embed = discord.Embed(
             title="🎯 Join Teams",
-            description="Would you like to join any teams? React below:\n\n"
-                      f"🇺🇳 - Join **National Team**\n"
-                      f"🎯 - Join **Demonstration Team**\n"
-                      f"✅ - Done (skip teams or finish selection)\n\n"
-                      f"You can select multiple teams by reacting to both emojis, then react with ✅ when done.",
+            description="Select which teams you'd like to join:\n\n"
+                      "🇺🇳 **National Team** - For competitive athletes\n"
+                      "🎯 **Demonstration Team** - For performances and shows\n\n"
+                      "You can select one, both, or none.\n"
+                      "Click **✅ Done** when finished.",
             color=discord.Color.blue()
         )
         
-        team_message = await dm_channel.send(embed=embed)
-        await team_message.add_reaction('🇺🇳')
-        await team_message.add_reaction('🎯')
-        await team_message.add_reaction('✅')
-        
-        # Store in user states for processing
-        user_states[user_id] = {
-            'waiting_for_name': False,
-            'waiting_for_gender': False,
-            'waiting_for_teams': True,
-            'child_name': registered_users[str(user_id)]['child_name'],
-            'gender': registered_users[str(user_id)]['gender'],
-            'teams_selected': registered_users[str(user_id)].get('teams', []),
-            'team_message_id': team_message.id,
-            'adding_teams': True  # Flag to indicate adding teams after registration
-        }
+        view = TeamSelectView(user_id, child_name, gender)
+        await dm_channel.send(embed=embed, view=view)
         
         await ctx.send(f"✅ Sent team selection DM to {member.mention}", ephemeral=True)
         
@@ -1992,7 +2196,7 @@ async def view_user(ctx, member: discord.Member):
     )
     
     embed.add_field(name="Child's Name", value=user_data['child_name'], inline=True)
-    embed.add_field(name="Role", value=user_data['role'], inline=True)
+    embed.add_field(name="Role", value=user_data.get('role_display', user_data['role']), inline=True)
     embed.add_field(name="Nickname", value=user_data['nickname'], inline=True)
     
     teams = user_data.get('teams', [])
@@ -2125,6 +2329,62 @@ async def check_consistency(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 
+@bot.command(name="fix_name")
+@commands.has_permissions(administrator=True)
+async def fix_name(ctx, member: discord.Member, *, new_name: str):
+    """Admin command to fix a user's registered name"""
+    user_id_str = str(member.id)
+    
+    if user_id_str not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not registered yet!", ephemeral=True)
+        return
+    
+    # Validate and clean the new name
+    is_valid, error_msg = validate_name_format(new_name)
+    if not is_valid:
+        await ctx.send(f"❌ Invalid name: {error_msg}", ephemeral=True)
+        return
+    
+    cleaned_name = clean_name(new_name)
+    
+    # Update the registered user data
+    old_name = registered_users[user_id_str]['child_name']
+    registered_users[user_id_str]['child_name'] = cleaned_name
+    
+    # Update nickname if needed
+    old_nickname = registered_users[user_id_str]['nickname']
+    gender = registered_users[user_id_str]['gender']
+    
+    if gender == 'mother':
+        new_nickname = f"{cleaned_name}'s Mother"
+    else:  # father
+        new_nickname = f"{cleaned_name}'s Father"
+    
+    registered_users[user_id_str]['nickname'] = new_nickname
+    
+    # Try to update the actual nickname on the server
+    try:
+        await member.edit(nick=new_nickname, reason="Name correction by admin")
+    except discord.Forbidden:
+        await ctx.send(f"⚠️ Could not update nickname for {member.mention} due to permissions.", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"⚠️ Error updating nickname: {e}", ephemeral=True)
+    
+    # Save changes
+    save_registered_users(registered_users)
+    
+    embed = discord.Embed(
+        title="✅ Name Updated",
+        description=f"Updated name for {member.mention}",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="Old Name", value=old_name, inline=True)
+    embed.add_field(name="New Name", value=cleaned_name, inline=True)
+    embed.add_field(name="Old Nickname", value=old_nickname, inline=False)
+    embed.add_field(name="New Nickname", value=new_nickname, inline=False)
+    
+    await ctx.send(embed=embed)
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
@@ -2154,7 +2414,7 @@ if __name__ == "__main__":
     print("INACTIVITY_CHECK_INTERVAL=300 (5 minutes)")
     print("\n=== HOW IT WORKS ===")
     print("1. Users react to ✅ in rules channel to register")
-    print("2. Registration happens via DM")
+    print("2. Registration happens via DM with BUTTONS (not reactions)")
     print("3. Messages in monitored channels create temporary private channels")
     print("4. Only admin and the user can access the temporary channel")
     print("5. After inactivity, a delete button appears (admin only)")
@@ -2164,6 +2424,12 @@ if __name__ == "__main__":
     print("🔄 Button disappears when conversation resumes")
     print("✅ Button-only deletion (no auto-delete)")
     print("📁 Organized in a dedicated category")
+    print("🔍 Name validation and confirmation")
+    print("✅ User can confirm or fix name before registration")
+    print("👆 BUTTON-BASED REGISTRATION (no reactions needed)")
+    print("   • Name confirmation with Yes/No buttons")
+    print("   • Role selection with Mother/Father buttons")
+    print("   • Team selection with toggle buttons")
     print()
     
     if not TOKEN:
