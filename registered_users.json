@@ -1,0 +1,21 @@
+{
+  "460295058328125450": {
+    "child_name": "Unknown",
+    "role": "Parent",
+    "nickname": "Sophie's Father",
+    "gender": "unknown",
+    "teams": [],
+    "registered_at": "2026-01-06T23:01:46.313812+00:00",
+    "auto_added": true
+  },
+  "799622188813516810": {
+    "child_name": "Hghhu",
+    "role": "Father",
+    "nickname": "Hghhu's Father",
+    "gender": "father",
+    "teams": [
+      "demonstration"
+    ],
+    "registered_at": "2026-01-07T00:42:51.555919+00:00"
+  }
+}

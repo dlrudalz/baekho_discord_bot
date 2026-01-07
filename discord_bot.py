@@ -1,10 +1,11 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import json
 import asyncio
-from typing import Dict, Optional, List
-from datetime import datetime
+from typing import Dict, Optional, List, Tuple
+from datetime import datetime, timedelta
+import time
 
 # Read configuration from config.txt
 config = {}
@@ -33,6 +34,11 @@ DEMONSTRATION_TEAM_CHANNEL_ID = int(config.get('DEMONSTRATION_TEAM_CHANNEL_ID', 
 GENERAL_CHAT_CHANNEL_ID = int(config.get('GENERAL_CHAT_CHANNEL_ID', '0'))
 ADMIN_USER_ID = int(config.get('ADMIN_USER_ID', '0'))
 
+# New configuration for temporary channels
+TEMPORARY_CHANNELS_CATEGORY_ID = int(config.get('TEMPORARY_CHANNELS_CATEGORY_ID', '0'))
+INACTIVITY_TIMEOUT = int(config.get('INACTIVITY_TIMEOUT', '7200'))  # Default 2 hours in seconds
+INACTIVITY_CHECK_INTERVAL = int(config.get('INACTIVITY_CHECK_INTERVAL', '300'))  # Check every 5 minutes
+
 print("=" * 50)
 print("📋 CONFIGURATION LOADED:")
 print(f"   Token: {'✅' if TOKEN and TOKEN != 'your_bot_token_here' else '❌'}")
@@ -46,6 +52,8 @@ print(f"   National Team Channel ID: {NATIONAL_TEAM_CHANNEL_ID}")
 print(f"   Demonstration Team Channel ID: {DEMONSTRATION_TEAM_CHANNEL_ID}")
 print(f"   General Chat Channel ID: {GENERAL_CHAT_CHANNEL_ID}")
 print(f"   Admin User ID: {ADMIN_USER_ID}")
+print(f"   Temp Channels Category ID: {TEMPORARY_CHANNELS_CATEGORY_ID}")
+print(f"   Inactivity Timeout: {INACTIVITY_TIMEOUT} seconds ({INACTIVITY_TIMEOUT//3600} hours)")
 print("=" * 50)
 
 if not TOKEN or TOKEN == 'your_bot_token_here':
@@ -57,6 +65,8 @@ intents.members = True
 intents.message_content = True
 intents.reactions = True
 
+processing_lock = asyncio.Lock()
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Store user states for DM process
@@ -67,6 +77,10 @@ REGISTRY_FILE = 'registered_users.json'
 active_conversations: Dict[int, Dict] = {}  # user_id -> {admin_id, channel_id, channel_type}
 # Store message references for admin replies
 message_references: Dict[int, int] = {}  # admin_message_id -> user_id
+
+# Store temporary channels data
+temporary_channels: Dict[int, Dict] = {}  # channel_id -> {user_id, created_at, last_activity, delete_button_message_id, delete_button_sent}
+user_temporary_channels: Dict[int, int] = {}  # user_id -> channel_id
 
 def load_registered_users():
     try:
@@ -90,6 +104,341 @@ if NATIONAL_TEAM_CHANNEL_ID:
 if DEMONSTRATION_TEAM_CHANNEL_ID:
     MONITORED_CHANNELS.append(DEMONSTRATION_TEAM_CHANNEL_ID)
 
+# ========== NEW CLASSES FOR TEMPORARY CHANNELS WITH BUTTONS ==========
+
+class DeleteChannelView(discord.ui.View):
+    """View with button for deleting temporary channels - ONLY ADMIN CAN PRESS"""
+    def __init__(self, channel_id: int, user_id: int):
+        super().__init__(timeout=None)
+        self.channel_id = channel_id
+        self.user_id = user_id
+    
+    @discord.ui.button(label="🗑️ Delete Temporary Channel", style=discord.ButtonStyle.danger, custom_id="delete_temp_channel")
+    async def delete_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle delete channel button press - ONLY ADMIN CAN PRESS"""
+        # Only admin can delete the channel
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message(
+                "❌ Only the admin can delete this temporary channel.",
+                ephemeral=True
+            )
+            return
+        
+        channel = interaction.guild.get_channel(self.channel_id)
+        if not channel:
+            await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+            return
+        
+        # Get user info for logging
+        user = interaction.guild.get_member(self.user_id)
+        
+        # Disable the button and update message
+        button.disabled = True
+        button.label = "✅ Channel Deleted"
+        button.style = discord.ButtonStyle.success
+        
+        await interaction.response.edit_message(view=self)
+        
+        # Send confirmation and delete channel
+        await asyncio.sleep(1)  # Give user time to see the button change
+        
+        try:
+            await channel.delete(reason="Temporary channel deleted by admin")
+            
+            # Clean up data
+            if self.channel_id in temporary_channels:
+                if self.user_id in user_temporary_channels:
+                    del user_temporary_channels[self.user_id]
+                del temporary_channels[self.channel_id]
+            
+            print(f"🗑️ Temporary channel deleted by admin for user: {user.name if user else 'Unknown'}")
+        except Exception as e:
+            print(f"❌ Error deleting channel: {e}")
+            await interaction.followup.send("❌ Error deleting channel.", ephemeral=True)
+
+class ConfirmDeleteView(discord.ui.View):
+    """Confirmation view for deleting channel"""
+    def __init__(self, channel_id: int, user_id: int):
+        super().__init__(timeout=60)  # 1 minute timeout
+        self.channel_id = channel_id
+        self.user_id = user_id
+        self.confirmed = False
+    
+    @discord.ui.button(label="✅ Confirm Delete", style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("❌ Only admin can delete this channel.", ephemeral=True)
+            return
+        
+        self.confirmed = True
+        self.stop()
+        
+        channel = interaction.guild.get_channel(self.channel_id)
+        if channel:
+            try:
+                await channel.delete(reason="Temporary channel deleted by admin")
+                
+                # Clean up data
+                if self.channel_id in temporary_channels:
+                    if self.user_id in user_temporary_channels:
+                        del user_temporary_channels[self.user_id]
+                    del temporary_channels[self.channel_id]
+                
+                await interaction.response.send_message("✅ Channel deleted successfully.", ephemeral=True)
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error deleting channel: {e}", ephemeral=True)
+    
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
+            return
+        
+        self.confirmed = False
+        self.stop()
+        
+        # Reset the delete button sent flag so it can be sent again after inactivity
+        if self.channel_id in temporary_channels:
+            temporary_channels[self.channel_id]['delete_button_sent'] = False
+        
+        await interaction.response.send_message("✅ Deletion cancelled.", ephemeral=True)
+
+# ========== TEMPORARY CHANNELS FUNCTIONS ==========
+
+async def create_temporary_channel(guild: discord.Guild, user: discord.Member, original_channel_name: str) -> Optional[discord.TextChannel]:
+    """Create a temporary private channel for a user"""
+    try:
+        # Check if user already has a temporary channel
+        if user.id in user_temporary_channels:
+            channel_id = user_temporary_channels[user.id]
+            channel = guild.get_channel(channel_id)
+            if channel:
+                # Update last activity
+                temporary_channels[channel_id]['last_activity'] = time.time()
+                return channel
+        
+        # Get or create temporary channels category
+        category = None
+        if TEMPORARY_CHANNELS_CATEGORY_ID:
+            category = guild.get_channel(TEMPORARY_CHANNELS_CATEGORY_ID)
+        
+        if not category:
+            # Create a new category
+            category = await guild.create_category(
+                name="📁 Private Conversations",
+                reason="Temporary channels category",
+                position=0
+            )
+            # Update config
+            config['TEMPORARY_CHANNELS_CATEGORY_ID'] = str(category.id)
+            with open('config.txt', 'w') as f:
+                for key, value in config.items():
+                    f.write(f"{key}={value}\n")
+        
+        # Create channel with appropriate permissions
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.get_member(ADMIN_USER_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
+        }
+        
+        # Create the channel
+        channel_name = f"private-{user.display_name.lower().replace(' ', '-')[:20]}"
+        channel = await category.create_text_channel(
+            name=channel_name,
+            overwrites=overwrites,
+            reason=f"Temporary channel for {user.name}",
+            topic=f"Private conversation with {user.name} | From: {original_channel_name}"
+        )
+        
+        # Store channel data
+        current_time = time.time()
+        temporary_channels[channel.id] = {
+            'user_id': user.id,
+            'created_at': current_time,
+            'last_activity': current_time,
+            'delete_button_sent': False,
+            'delete_button_message_id': None,
+            'original_channel': original_channel_name,
+            'user_name': user.name
+        }
+        user_temporary_channels[user.id] = channel.id
+        
+        # Send welcome message with instructions
+        embed = discord.Embed(
+            title="🔒 Private Conversation",
+            description=f"Welcome {user.mention}!\n\n"
+                       f"This is a private channel between you and the admin.\n"
+                       f"Messages from **#{original_channel_name}** will appear here.\n\n"
+                       f"**After {INACTIVITY_TIMEOUT//3600} hours of inactivity, a delete button will appear (admin only).**",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=f"Channel created at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        welcome_msg = await channel.send(embed=embed)
+        
+        # Send initial instructions to admin
+        admin_user = guild.get_member(ADMIN_USER_ID)
+        if admin_user:
+            try:
+                admin_dm = await admin_user.create_dm()
+                admin_embed = discord.Embed(
+                    title="🔔 New Temporary Channel Created",
+                    description=f"A temporary channel has been created for conversation with **{user.name}**\n\n"
+                               f"**Channel:** #{channel.name}\n"
+                               f"**User:** {user.mention} (`{user.id}`)\n"
+                               f"**From:** #{original_channel_name}\n\n"
+                               f"You can delete this channel at any time using the `!close_channel` command in the channel.",
+                    color=discord.Color.green()
+                )
+                await admin_dm.send(embed=admin_embed)
+            except:
+                pass
+        
+        print(f"🔒 Created temporary channel for {user.name}")
+        return channel
+        
+    except Exception as e:
+        print(f"❌ Error creating temporary channel: {e}")
+        return None
+
+async def send_delete_button_helper(channel: discord.TextChannel):
+    """Send delete button in the channel (only admin can press)"""
+    try:
+        if channel.id not in temporary_channels:
+            return
+        
+        data = temporary_channels[channel.id]
+        
+        # Calculate inactivity time
+        current_time = time.time()
+        inactive_time = current_time - data['last_activity']
+        inactive_hours = inactive_time // 3600
+        inactive_minutes = (inactive_time % 3600) // 60
+        
+        # Create embed
+        embed = discord.Embed(
+            title="⏰ Channel Inactive",
+            description=f"This channel has been inactive for **{int(inactive_hours)}h {int(inactive_minutes)}m**.\n\n"
+                       f"**Admin can delete this channel using the button below.**\n"
+                       f"If conversation continues, the button will be removed.",
+            color=discord.Color.orange()
+        )
+        embed.set_footer(text=f"User: {data['user_name']} | Created: {datetime.fromtimestamp(data['created_at']).strftime('%Y-%m-%d %H:%M')}")
+        
+        # Create view with delete button
+        view = DeleteChannelView(channel.id, data['user_id'])
+        
+        # Send message with button
+        button_msg = await channel.send(embed=embed, view=view)
+        
+        # Update channel data
+        temporary_channels[channel.id]['delete_button_sent'] = True
+        temporary_channels[channel.id]['delete_button_message_id'] = button_msg.id
+        
+        print(f"⏰ Sent delete button for inactive channel #{channel.name}")
+        
+        # Also notify admin via DM
+        admin_user = channel.guild.get_member(ADMIN_USER_ID)
+        if admin_user:
+            try:
+                admin_dm = await admin_user.create_dm()
+                admin_embed = discord.Embed(
+                    title="🔔 Channel Inactive - Delete Button Sent",
+                    description=f"The temporary channel **#{channel.name}** has been inactive for {int(inactive_hours)} hours.\n\n"
+                               f"A delete button has been sent in the channel.\n"
+                               f"You can delete it by pressing the button in the channel.",
+                    color=discord.Color.orange()
+                )
+                await admin_dm.send(embed=admin_embed)
+            except:
+                pass
+        
+        return button_msg
+        
+    except Exception as e:
+        print(f"❌ Error sending delete button: {e}")
+        return None
+
+async def check_inactive_channels(guild: discord.Guild):
+    """Check for inactive temporary channels and send delete buttons"""
+    current_time = time.time()
+    channels_to_check = list(temporary_channels.items())
+    
+    for channel_id, data in channels_to_check:
+        channel = guild.get_channel(channel_id)
+        if not channel:
+            # Channel was deleted, clean up
+            if channel_id in temporary_channels:
+                user_id = temporary_channels[channel_id].get('user_id')
+                if user_id in user_temporary_channels:
+                    del user_temporary_channels[user_id]
+                del temporary_channels[channel_id]
+            continue
+        
+        # Check if channel is inactive
+        inactive_time = current_time - data['last_activity']
+        
+        # Send delete button after inactivity timeout
+        if inactive_time >= INACTIVITY_TIMEOUT and not data['delete_button_sent']:
+            await send_delete_button_helper(channel)  # Changed from send_delete_button
+        
+        # If button was sent but there's been activity since, remove the button
+        elif data['delete_button_sent'] and inactive_time < INACTIVITY_TIMEOUT:
+            # Remove the delete button message
+            button_msg_id = data.get('delete_button_message_id')
+            if button_msg_id:
+                try:
+                    button_msg = await channel.fetch_message(button_msg_id)
+                    await button_msg.delete()
+                    print(f"✅ Removed delete button from #{channel.name} (activity resumed)")
+                except:
+                    pass
+            
+            # Reset button sent flag
+            temporary_channels[channel_id]['delete_button_sent'] = False
+            temporary_channels[channel_id]['delete_button_message_id'] = None
+
+async def cleanup_user_data(user_id: int):
+    """Clean up all data for a user when they leave"""
+    user_id_str = str(user_id)
+    
+    # Remove from registered_users
+    if user_id_str in registered_users:
+        del registered_users[user_id_str]
+        save_registered_users(registered_users)
+        print(f"🗑️ Deleted registration data for user ID {user_id}")
+    
+    # Remove from user_states
+    if user_id in user_states:
+        del user_states[user_id]
+        print(f"🗑️ Removed user state for user ID {user_id}")
+    
+    # Remove from active_conversations
+    if user_id in active_conversations:
+        # Clean up message references
+        message_ids_to_remove = []
+        for admin_msg_id, user_msg_id in message_references.items():
+            if user_msg_id == user_id:
+                message_ids_to_remove.append(admin_msg_id)
+        
+        for msg_id in message_ids_to_remove:
+            del message_references[msg_id]
+        
+        del active_conversations[user_id]
+        print(f"🗑️ Removed active conversations for user ID {user_id}")
+    
+    # Remove temporary channel if exists
+    if user_id in user_temporary_channels:
+        channel_id = user_temporary_channels[user_id]
+        if channel_id in temporary_channels:
+            del temporary_channels[channel_id]
+        del user_temporary_channels[user_id]
+        print(f"🗑️ Removed temporary channel reference for user ID {user_id}")
+
+# ========== EVENT HANDLERS ==========
+
 @bot.event
 async def on_ready():
     print(f'✅ {bot.user} is online!')
@@ -101,7 +450,7 @@ async def on_ready():
         print(f'🏠 Server: {guild.name} (ID: {guild.id})')
         
         # Check monitored channels
-        print("\n📢 MONITORED CHANNELS (messages will be forwarded):")
+        print("\n📢 MONITORED CHANNELS (messages will create temporary channels):")
         for channel_id in MONITORED_CHANNELS:
             channel = guild.get_channel(channel_id)
             if channel:
@@ -142,11 +491,294 @@ async def on_ready():
             print(f'🎯 Demonstration Team Role: {demonstration_role.name} (ID: {demonstration_role.id})')
         else:
             print(f'⚠️ Demonstration Team role not found! ID: {DEMONSTRATION_TEAM_ROLE_ID}')
+        
+        # Check temporary channels category
+        if TEMPORARY_CHANNELS_CATEGORY_ID:
+            temp_category = guild.get_channel(TEMPORARY_CHANNELS_CATEGORY_ID)
+            if temp_category:
+                print(f'📁 Temporary Channels Category: #{temp_category.name} (ID: {temp_category.id})')
+            else:
+                print(f'⚠️ Temporary channels category not found! ID: {TEMPORARY_CHANNELS_CATEGORY_ID}')
+        
+        # Ensure all registered users have the green check mark
+        print("\n🔍 Verifying green check marks for registered users...")
+        try:
+            if rules_channel:
+                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                
+                # Get users who reacted with green check
+                green_check_users = set()
+                for reaction in rules_message.reactions:
+                    if str(reaction.emoji) == '✅':
+                        async for user in reaction.users():
+                            if not user.bot:
+                                green_check_users.add(user.id)
+                
+                # Check registered users without green check
+                for user_id_str in registered_users.keys():
+                    user_id = int(user_id_str)
+                    member = guild.get_member(user_id)
+                    
+                    if member and user_id not in green_check_users:
+                        print(f"   ⚠️ Registered user {member.name} missing green check, adding...")
+                        try:
+                            await rules_message.add_reaction('✅')
+                            print(f"   ✅ Added green check for {member.name}")
+                        except Exception as e:
+                            print(f"   ❌ Error adding green check for {member.name}: {e}")
+                
+                # Check users with green check but not registered
+                print("\n🔍 Checking for non-registered users with green check...")
+                for user_id in green_check_users:
+                    if str(user_id) not in registered_users:
+                        member = guild.get_member(user_id)
+                        if member:
+                            # Check if they have family role (completed registration)
+                            if family_role and family_role in member.roles:
+                                print(f"   ℹ️ {member.name} has family role but not in registry, adding to registry...")
+                                # Add to registry with basic info
+                                registered_users[str(user_id)] = {
+                                    'child_name': 'Unknown',
+                                    'role': 'Parent',
+                                    'nickname': member.display_name,
+                                    'gender': 'unknown',
+                                    'teams': [],
+                                    'registered_at': discord.utils.utcnow().isoformat(),
+                                    'auto_added': True
+                                }
+                                save_registered_users(registered_users)
+                            else:
+                                print(f"   ⚠️ {member.name} has green check but is not registered (no family role)")
+        except Exception as e:
+            print(f"⚠️ Error verifying green check marks: {e}")
+    
+    # Start background tasks
+    inactivity_check.start()
     
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.watching,
         name="for messages to forward"
     ))
+
+@tasks.loop(seconds=INACTIVITY_CHECK_INTERVAL)
+async def inactivity_check():
+    """Background task to check for inactive channels"""
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        await check_inactive_channels(guild)
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    """Handle when a member leaves the server"""
+    user_id = member.id
+    user_id_str = str(user_id)
+    
+    print(f"👤 Member left: {member.name} (ID: {user_id})")
+    
+    # Delete user data from registered_users
+    if user_id_str in registered_users:
+        # Remove from registered_users
+        del registered_users[user_id_str]
+        save_registered_users(registered_users)
+        print(f"🗑️ Deleted registration data for {member.name}")
+    
+    # Remove from user_states if present
+    if user_id in user_states:
+        del user_states[user_id]
+        print(f"🗑️ Removed user state for {member.name}")
+    
+    # Remove from active_conversations
+    if user_id in active_conversations:
+        # Remove message references for this user
+        message_ids_to_remove = []
+        for admin_msg_id, user_msg_id in message_references.items():
+            if user_msg_id == user_id:
+                message_ids_to_remove.append(admin_msg_id)
+        
+        for msg_id in message_ids_to_remove:
+            del message_references[msg_id]
+        
+        del active_conversations[user_id]
+        print(f"🗑️ Removed active conversations for {member.name}")
+    
+    # Delete temporary channel if exists
+    if user_id in user_temporary_channels:
+        channel_id = user_temporary_channels[user_id]
+        channel = member.guild.get_channel(channel_id)
+        if channel:
+            try:
+                await channel.delete(reason=f"User {member.name} left the server")
+                print(f"🗑️ Deleted temporary channel for {member.name}")
+            except Exception as e:
+                print(f"⚠️ Error deleting temporary channel: {e}")
+        
+        # Clean up data
+        if channel_id in temporary_channels:
+            del temporary_channels[channel_id]
+        del user_temporary_channels[user_id]
+    
+    # Try to remove the green check mark reaction from rules message
+    try:
+        guild = bot.get_guild(GUILD_ID)
+        if guild:
+            rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+            if rules_channel:
+                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                
+                # Find the green check mark reaction
+                for reaction in rules_message.reactions:
+                    if str(reaction.emoji) == '✅':
+                        # Remove this user's reaction
+                        async for user in reaction.users():
+                            if user.id == user_id:
+                                await reaction.remove(user)
+                                print(f"✅ Removed green check mark reaction for {member.name}")
+                                break
+    except discord.NotFound:
+        print("⚠️ Rules message not found, cannot remove reaction")
+    except discord.Forbidden:
+        print("❌ No permission to remove reaction from rules message")
+    except Exception as e:
+        print(f"⚠️ Error removing reaction: {e}")
+    
+    print(f"✅ Cleanup complete for {member.name}")
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    """Prevent users from removing their green check mark reaction"""
+    print(f"\n❌ REACTION REMOVED DETECTED:")
+    print(f"   Channel ID: {payload.channel_id}")
+    print(f"   Message ID: {payload.message_id}")
+    print(f"   Emoji: {payload.emoji}")
+    print(f"   User ID: {payload.user_id}")
+    
+    # Ignore bot's own reactions
+    if payload.user_id == bot.user.id:
+        return
+    
+    # Check if this is the rules channel and the correct message
+    if (payload.channel_id == RULES_CHANNEL_ID and 
+        payload.message_id == RULES_MESSAGE_ID and 
+        str(payload.emoji) == '✅'):
+        
+        print(f"   ⚠️ User tried to remove green check mark!")
+        
+        guild = bot.get_guild(payload.guild_id)
+        if guild:
+            member = guild.get_member(payload.user_id)
+            if member and not member.bot:
+                print(f"   👤 User: {member.name}")
+                
+                # Check if user is registered
+                is_registered = str(member.id) in registered_users
+                
+                # Check if user has the family role (completed registration)
+                has_family_role = False
+                family_role = guild.get_role(FAMILY_ROLE_ID)
+                if family_role:
+                    has_family_role = family_role in member.roles
+                
+                # If user is registered or has family role, re-add the reaction
+                if is_registered or has_family_role:
+                    print(f"   🔄 User is registered/received family role, re-adding reaction...")
+                    
+                    try:
+                        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+                        if rules_channel:
+                            rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                            await rules_message.add_reaction('✅')
+                            print(f"   ✅ Re-added green check mark for {member.name}")
+                            
+                            # Send warning to user in DM if possible
+                            try:
+                                dm_channel = await member.create_dm()
+                                warning_embed = discord.Embed(
+                                    title="⚠️ Registration Locked",
+                                    description="Your green check mark reaction cannot be removed!\n\n"
+                                              "Once you've accepted the rules and begun registration, "
+                                              "your agreement is recorded. If you leave the server, "
+                                              "your data will be automatically deleted.",
+                                    color=discord.Color.orange()
+                                )
+                                await dm_channel.send(embed=warning_embed)
+                            except discord.Forbidden:
+                                print(f"   ⚠️ Cannot send DM warning to {member.name}")
+                    except Exception as e:
+                        print(f"   ❌ Error re-adding reaction: {e}")
+                else:
+                    print(f"   ℹ️ User is not registered, allowing reaction removal")
+        else:
+            print(f"   ❌ Guild not found")
+
+@bot.event 
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """Handle reactions for registration"""
+    print(f"\n🎯 REACTION DETECTED:")
+    print(f"   Channel ID: {payload.channel_id}")
+    print(f"   Message ID: {payload.message_id}")
+    print(f"   Emoji: {payload.emoji}")
+    print(f"   User ID: {payload.user_id}")
+    
+    # Ignore bot's own reactions
+    if payload.user_id == bot.user.id:
+        print("   👆 Bot's own reaction, ignoring")
+        return
+    
+    # Check if this is in our rules channel
+    if payload.channel_id == RULES_CHANNEL_ID:
+        print(f"   📍 This is in the RULES CHANNEL!")
+        print(f"   Looking for message ID: {RULES_MESSAGE_ID}")
+        
+        # Check if it's the right message
+        if payload.message_id == RULES_MESSAGE_ID:
+            print(f"   ✅ CORRECT MESSAGE FOUND!")
+            
+            # Check if it's the green check mark
+            if str(payload.emoji) == '✅':
+                print(f"   🎉 GREEN CHECK MARK DETECTED!")
+                
+                guild = bot.get_guild(payload.guild_id)
+                if guild:
+                    member = guild.get_member(payload.user_id)
+                    if member and not member.bot:
+                        print(f"   👤 User: {member.name}")
+                        
+                        # Check if already registered
+                        if str(member.id) in registered_users:
+                            print(f"   ⚠️ User already registered")
+                            
+                            # Send message that they're already registered
+                            try:
+                                dm_channel = await member.create_dm()
+                                already_registered_embed = discord.Embed(
+                                    title="✅ Already Registered",
+                                    description="You are already registered in our system!\n\n"
+                                              "Your green check mark is locked and cannot be removed.",
+                                    color=discord.Color.green()
+                                )
+                                await dm_channel.send(embed=already_registered_embed)
+                            except discord.Forbidden:
+                                print(f"   ⚠️ Cannot send DM to {member.name}")
+                            return
+                        
+                        print(f"   🚀 Starting DM process...")
+                        await start_dm_process(member)
+                    else:
+                        print(f"   ❌ Could not find member")
+            else:
+                print(f"   ❌ Wrong emoji: {payload.emoji} (expected ✅)")
+        else:
+            print(f"   ❌ Wrong message ID: {payload.message_id} (expected {RULES_MESSAGE_ID})")
+    else:
+        print(f"   ❌ Not in rules channel (expected {RULES_CHANNEL_ID})")
+    
+    # Also handle DM reactions for registration
+    channel = bot.get_channel(payload.channel_id)
+    if isinstance(channel, discord.DMChannel):
+        print(f"   💬 This is a DM reaction")
+        user = bot.get_user(payload.user_id)
+        if user and not user.bot:
+            await handle_dm_reaction(user, payload.emoji, payload.message_id)
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -154,7 +786,7 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
     
-    # Handle messages in monitored channels (forward to admin)
+    # Handle messages in monitored channels (create temporary channel and forward)
     if message.channel.id in MONITORED_CHANNELS:
         await handle_monitored_channel_message(message)
         # Delete the original message
@@ -165,6 +797,34 @@ async def on_message(message: discord.Message):
             print(f'❌ Cannot delete message in #{message.channel.name}')
         except discord.NotFound:
             pass  # Message already deleted
+    
+    # Handle messages in temporary channels
+    elif message.channel.id in temporary_channels:
+        # Update last activity for this channel
+        temporary_channels[message.channel.id]['last_activity'] = time.time()
+        
+        # If delete button was sent, remove it
+        data = temporary_channels[message.channel.id]
+        if data['delete_button_sent']:
+            button_msg_id = data.get('delete_button_message_id')
+            if button_msg_id:
+                try:
+                    button_msg = await message.channel.fetch_message(button_msg_id)
+                    await button_msg.delete()
+                    print(f"✅ Removed delete button from #{message.channel.name} (activity resumed)")
+                except:
+                    pass
+            
+            # Reset button sent flag
+            temporary_channels[message.channel.id]['delete_button_sent'] = False
+            temporary_channels[message.channel.id]['delete_button_message_id'] = None
+        
+        print(f'💬 Message in temporary channel #{message.channel.name}')
+        
+        # IMPORTANT: Process commands in temporary channels too!
+        # This allows commands like !send_delete_button to work
+        await bot.process_commands(message)
+        return  # Return early so we don't double-process commands
     
     # Handle DMs to the bot (from admin or users)
     elif isinstance(message.channel, discord.DMChannel):
@@ -180,15 +840,20 @@ async def on_message(message: discord.Message):
     
     await bot.process_commands(message)
 
+# ========== MESSAGE HANDLING FUNCTIONS ==========
 async def handle_monitored_channel_message(message: discord.Message):
-    """Forward messages from monitored channels to admin via DM"""
-    admin_user = bot.get_user(ADMIN_USER_ID)
-    if not admin_user:
-        print(f'❌ Admin user not found! ID: {ADMIN_USER_ID}')
-        return
-    
-    try:
-        dm_channel = await admin_user.create_dm()
+    """Handle messages from monitored channels by creating/using temporary channels"""
+    # Acquire lock to prevent overlapping operations
+    async with processing_lock:
+        guild = message.guild
+        user = message.author
+        
+        # Create or get existing temporary channel
+        temp_channel = await create_temporary_channel(guild, user, message.channel.name)
+        
+        if not temp_channel:
+            print(f"❌ Failed to create temporary channel for {user.name}")
+            return
         
         # Determine which channel the message came from
         channel_name = message.channel.name
@@ -207,7 +872,7 @@ async def handle_monitored_channel_message(message: discord.Message):
             channel_type = f"#{channel_name}"
             emoji = "💬"
         
-        # Create embed for the forwarded message
+        # Create embed for the message
         embed = discord.Embed(
             title=f"{emoji} Message from {channel_type}",
             description=message.content,
@@ -222,13 +887,13 @@ async def handle_monitored_channel_message(message: discord.Message):
         )
         
         # Add metadata
-        embed.add_field(name="👤 Author", value=f"{message.author.mention}\nID: `{message.author.id}`", inline=True)
-        embed.add_field(name="📝 Channel", value=f"#{channel_name}\n{emoji} {channel_type}", inline=True)
+        embed.add_field(name="👤 Author", value=f"{message.author.mention}", inline=True)
+        embed.add_field(name="📝 Original Channel", value=f"#{channel_name}", inline=True)
         
         # Handle attachments
         if message.attachments:
             attachment_info = []
-            for i, attachment in enumerate(message.attachments[:3]):  # Limit to first 3 attachments
+            for i, attachment in enumerate(message.attachments[:3]):
                 if hasattr(attachment, 'content_type') and attachment.content_type and 'image' in attachment.content_type:
                     attachment_info.append(f"📸 [Image {i+1}]({attachment.url})")
                 elif hasattr(attachment, 'filename'):
@@ -246,35 +911,36 @@ async def handle_monitored_channel_message(message: discord.Message):
             if image_attachments:
                 embed.set_image(url=image_attachments[0].url)
         
-        embed.add_field(
-            name="💭 How to Respond",
-            value="**Reply to this message** to send a DM back to the user.\nYour response will be sent as a direct message from you.",
-            inline=False
-        )
+        embed.set_footer(text="Reply in this channel to continue the conversation")
         
-        # Send the forwarded message
-        forward_msg = await dm_channel.send(embed=embed)
-        
-        # Store conversation state
-        active_conversations[message.author.id] = {
-            'admin_id': ADMIN_USER_ID,
-            'admin_dm_channel': dm_channel.id,
-            'last_forwarded_message_id': forward_msg.id,
-            'original_channel_id': message.channel.id,
-            'original_channel_name': channel_name,
-            'channel_type': channel_type,
-            'channel_emoji': emoji
-        }
-        
-        # Store message reference for easy lookup
-        message_references[forward_msg.id] = message.author.id
-        
-        print(f'📤 Forwarded message from {message.author.name} in {channel_type} to admin')
-        
-    except discord.Forbidden:
-        print(f'❌ Cannot send DM to admin!')
-    except Exception as e:
-        print(f'❌ Error forwarding message: {e}')
+        try:
+            # Send the message in temporary channel FIRST
+            await temp_channel.send(embed=embed)
+            print(f'📤 Forwarded message from {message.author.name} in {channel_type} to temporary channel')
+            
+            # Delete the original message AFTER successful forwarding
+            await message.delete()
+            print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
+            
+        except discord.HTTPException as e:
+            print(f'⚠️ Discord API rate limit or error: {e}')
+            if e.status == 429:  # Too Many Requests
+                retry_after = e.retry_after if hasattr(e, 'retry_after') else 5
+                print(f'⏳ Rate limited, retry after: {retry_after} seconds')
+                await asyncio.sleep(retry_after)
+                
+                # Try deleting again after backoff
+                try:
+                    await message.delete()
+                    print(f'🗑️ Deleted message after rate limit backoff')
+                except:
+                    pass
+        except discord.Forbidden:
+            print(f'❌ Cannot delete message in #{message.channel.name} - check bot permissions')
+        except discord.NotFound:
+            pass  # Message already deleted
+        except Exception as e:
+            print(f'❌ Unexpected error in handle_monitored_channel_message: {e}')
 
 async def handle_admin_dm_response(message: discord.Message):
     """Handle when admin responds to a forwarded message"""
@@ -345,14 +1011,16 @@ async def handle_admin_dm_response(message: discord.Message):
     else:
         # Admin sent a message without replying - send instructions
         help_embed = discord.Embed(
-            title="💭 How to Respond to Users",
-            description="To respond to a user's message:\n\n"
-                      "1. Find their original message above\n"
-                      "2. **Click 'Reply'** on that message\n"
-                      "3. Type your response\n"
-                      "4. Send the message\n\n"
-                      "**Your response will be sent directly to the user as a DM from you.**\n\n"
-                      "The user can then reply to your DM, and their response will appear here for you to continue the conversation.",
+            title="💭 How Temporary Channels Work",
+            description="**New System:**\n"
+                      "1. When a user sends a message in monitored channels\n"
+                      "2. A private temporary channel is created\n"
+                      "3. Only you and the user can see/access it\n"
+                      "4. All conversation happens in that channel\n\n"
+                      "**Benefits:**\n"
+                      "• Clean separation between conversations\n"
+                      "• Delete button appears after inactivity (admin only)\n"
+                      "• Easy to track individual discussions",
             color=discord.Color.blue()
         )
         await message.channel.send(embed=help_embed)
@@ -461,6 +1129,8 @@ async def handle_registration_dm(message: discord.Message):
     elif user_id in user_states and user_states[user_id]['waiting_for_teams']:
         await message.channel.send("⚠️ Please select teams by reacting to the message above with 🇺🇳, 🎯, or ✅ when done.")
 
+# ========== REGISTRATION FUNCTIONS ==========
+
 async def assign_family_role(member: discord.Member):
     """Assign Family Member role to a member"""
     guild = bot.get_guild(GUILD_ID)
@@ -526,17 +1196,13 @@ async def start_dm_process(member: discord.Member):
         embed = discord.Embed(
             title="👨‍👩‍👧‍👦 Family Registration",
             description="Welcome! Let's register you as a parent.\n\n"
-                      "I'll guide you through 3 simple steps:",
+                      "I'll guide you through 3 steps:",
             color=discord.Color.blue()
         )
-        embed.add_field(name="Step 1", value="Your child's name", inline=True)
-        embed.add_field(name="Step 2", value="Select mother or father", inline=True)
-        embed.add_field(name="Step 3", value="Choose which teams to join", inline=True)
+        embed.add_field(name="Step 1", value="Please type your child's FIRST and LAST NAME", inline=True)
         
         await dm_channel.send(embed=embed)
         await asyncio.sleep(1)
-        
-        await dm_channel.send("**Step 1 of 3**: Please type your child's name below:")
         
         # Initialize user state
         user_states[member.id] = {
@@ -556,63 +1222,6 @@ async def start_dm_process(member: discord.Member):
         print(f"❌ Cannot send DM to {member.name} - they might have DMs disabled")
     except Exception as e:
         print(f"❌ Error sending DM to {member.name}: {e}")
-
-@bot.event 
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Handle reactions for registration"""
-    print(f"\n🎯 REACTION DETECTED:")
-    print(f"   Channel ID: {payload.channel_id}")
-    print(f"   Message ID: {payload.message_id}")
-    print(f"   Emoji: {payload.emoji}")
-    print(f"   User ID: {payload.user_id}")
-    
-    # Ignore bot's own reactions
-    if payload.user_id == bot.user.id:
-        print("   👆 Bot's own reaction, ignoring")
-        return
-    
-    # Check if this is in our rules channel
-    if payload.channel_id == RULES_CHANNEL_ID:
-        print(f"   📍 This is in the RULES CHANNEL!")
-        print(f"   Looking for message ID: {RULES_MESSAGE_ID}")
-        
-        # Check if it's the right message
-        if payload.message_id == RULES_MESSAGE_ID:
-            print(f"   ✅ CORRECT MESSAGE FOUND!")
-            
-            # Check if it's the green check mark
-            if str(payload.emoji) == '✅':
-                print(f"   🎉 GREEN CHECK MARK DETECTED!")
-                
-                guild = bot.get_guild(payload.guild_id)
-                if guild:
-                    member = guild.get_member(payload.user_id)
-                    if member and not member.bot:
-                        print(f"   👤 User: {member.name}")
-                        
-                        # Check if already registered
-                        if str(member.id) in registered_users:
-                            print(f"   ⚠️ User already registered")
-                            return
-                        
-                        print(f"   🚀 Starting DM process...")
-                        await start_dm_process(member)
-                    else:
-                        print(f"   ❌ Could not find member")
-            else:
-                print(f"   ❌ Wrong emoji: {payload.emoji} (expected ✅)")
-        else:
-            print(f"   ❌ Wrong message ID: {payload.message_id} (expected {RULES_MESSAGE_ID})")
-    else:
-        print(f"   ❌ Not in rules channel (expected {RULES_CHANNEL_ID})")
-    
-    # Also handle DM reactions for registration
-    channel = bot.get_channel(payload.channel_id)
-    if isinstance(channel, discord.DMChannel):
-        print(f"   💬 This is a DM reaction")
-        user = bot.get_user(payload.user_id)
-        if user and not user.bot:
-            await handle_dm_reaction(user, payload.emoji, payload.message_id)
 
 async def handle_dm_reaction(user: discord.User, emoji: discord.PartialEmoji, message_id: int):
     """Handle gender and team selection in DMs"""
@@ -829,7 +1438,7 @@ async def setup_rules(ctx):
     
     embed = discord.Embed(
         title="📜 Server Rules & Registration",
-        description="**Welcome to our Family Server!** 👨‍👩‍👧‍👦\n\n"
+        description="**Welcome to our Tae Kwon Do Server!** 👨‍👩‍👧‍👦\n\n"
                    "**Rules:**\n"
                    "1. Be respectful to all family members\n"
                    "2. No bullying or harassment\n"
@@ -837,8 +1446,8 @@ async def setup_rules(ctx):
                    "4. Respect everyone's privacy\n"
                    "5. Have fun and build our community!\n\n"
                    "**After reading the rules, react with ✅ below to begin registration.**\n"
-                   "You will receive a private DM to complete the process.\n\n"
-                   "**Note:** You will receive the Family Member role after completing registration.",
+                   "You will receive a DM from 백호 (baekho) to complete the process.\n\n"
+                   "**Note:** You will receive the access to the server after completing registration.",
         color=discord.Color.purple()
     )
     
@@ -854,27 +1463,288 @@ async def setup_rules(ctx):
     await ctx.send(f"✅ Rules message set up! New Message ID: {rules_message.id}")
     print(f"📝 New rules message ID saved: {rules_message.id}")
 
-@bot.command(name="setup_chat_forwarding")
+@bot.command(name="setup_temp_channels")
 @commands.has_permissions(administrator=True)
-async def setup_chat_forwarding(ctx):
-    """Set up chat forwarding configuration"""
+async def setup_temp_channels(ctx):
+    """Set up temporary channels configuration"""
     embed = discord.Embed(
-        title="💬 Chat Forwarding Setup",
-        description="**How it works:**\n"
-                   "1. Messages in monitored channels are deleted\n"
-                   "2. Messages are forwarded to admin via DM\n"
-                   "3. Admin can reply directly to the forwarded message\n"
-                   "4. Replies are sent back to the user via DM\n\n"
+        title="🔧 Temporary Channels Setup",
+        description="**How temporary channels work:**\n"
+                   "1. When a user sends a message in monitored channels\n"
+                   "2. A private temporary channel is created\n"
+                   "3. Only admin and the user can access it\n"
+                   "4. After inactivity, a delete button appears (admin only)\n\n"
                    "**Current Configuration:**\n"
-                   f"General Chat Channel ID: `{GENERAL_CHAT_CHANNEL_ID}`\n"
-                   f"National Team Channel ID: `{NATIONAL_TEAM_CHANNEL_ID}`\n"
-                   f"Demonstration Team Channel ID: `{DEMONSTRATION_TEAM_CHANNEL_ID}`\n"
-                   f"Admin User ID: `{ADMIN_USER_ID}`\n\n"
-                   "**To change these, edit your config.txt file.**",
+                   f"Temporary Channels Category ID: `{TEMPORARY_CHANNELS_CATEGORY_ID}`\n"
+                   f"Inactivity Timeout: `{INACTIVITY_TIMEOUT}` seconds ({INACTIVITY_TIMEOUT//3600} hours)\n"
+                   f"Check Interval: `{INACTIVITY_CHECK_INTERVAL}` seconds\n\n"
+                   "**To change these, edit your config.txt file:**\n"
+                   "`TEMPORARY_CHANNELS_CATEGORY_ID=category_id`\n"
+                   "`INACTIVITY_TIMEOUT=7200` (2 hours in seconds)\n"
+                   "`INACTIVITY_CHECK_INTERVAL=300` (5 minutes)",
         color=discord.Color.blue()
     )
     
+    # Create category if not exists
+    if not TEMPORARY_CHANNELS_CATEGORY_ID:
+        category = await ctx.guild.create_category(
+            name="📁 Private Conversations",
+            reason="Temporary channels category",
+            position=0
+        )
+        
+        # Update config
+        config['TEMPORARY_CHANNELS_CATEGORY_ID'] = str(category.id)
+        with open('config.txt', 'w') as f:
+            for key, value in config.items():
+                f.write(f"{key}={value}\n")
+        
+        embed.add_field(name="✅ Created Category", value=f"New category created with ID: `{category.id}`", inline=False)
+    
     await ctx.send(embed=embed)
+
+@bot.command(name="active_temp_channels")
+@commands.has_permissions(administrator=True)
+async def active_temp_channels(ctx):
+    """Show active temporary channels"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    if not temporary_channels:
+        embed = discord.Embed(
+            title="📁 Active Temporary Channels",
+            description="No active temporary channels.",
+            color=discord.Color.grey()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title="📁 Active Temporary Channels",
+        description=f"Currently {len(temporary_channels)} active temporary channel(s):",
+        color=discord.Color.blue()
+    )
+    
+    for channel_id, data in temporary_channels.items():
+        channel = ctx.guild.get_channel(channel_id)
+        user = ctx.guild.get_member(data['user_id'])
+        
+        if channel and user:
+            inactive_time = time.time() - data['last_activity']
+            inactive_hours = inactive_time // 3600
+            inactive_minutes = (inactive_time % 3600) // 60
+            
+            status = "✅ Active" if inactive_time < 300 else "⚠️ Inactive"  # 5 minutes threshold
+            button_status = "🔴 Delete Button Sent" if data['delete_button_sent'] else "🟢 No Button"
+            
+            embed.add_field(
+                name=f"🔒 {channel.name}",
+                value=f"👤 User: {user.mention}\n"
+                      f"📅 Created: <t:{int(data['created_at'])}:R>\n"
+                      f"⏰ Inactive: {int(inactive_hours)}h {int(inactive_minutes)}m\n"
+                      f"📝 From: {data['original_channel']}\n"
+                      f"🔧 Status: {status}\n"
+                      f"🛑 {button_status}",
+                inline=True
+            )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name="close_channel")
+@commands.has_permissions(administrator=True)
+async def close_channel(ctx, channel: discord.TextChannel = None):
+    """Close a temporary channel (admin only)"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    if not channel:
+        channel = ctx.channel
+    
+    if channel.id not in temporary_channels:
+        await ctx.send("❌ This is not a temporary channel.", ephemeral=True)
+        return
+    
+    # Get channel data
+    data = temporary_channels[channel.id]
+    user = ctx.guild.get_member(data['user_id'])
+    
+    # Send confirmation with buttons
+    embed = discord.Embed(
+        title="🗑️ Delete Temporary Channel",
+        description=f"Are you sure you want to delete **{channel.name}**?\n\n"
+                   f"**User:** {user.mention if user else 'Unknown'}\n"
+                   f"**Created:** <t:{int(data['created_at'])}:R>\n"
+                   f"**This action cannot be undone!**",
+        color=discord.Color.red()
+    )
+    
+    view = ConfirmDeleteView(channel.id, data['user_id'])
+    await ctx.send(embed=embed, view=view)
+
+@bot.command(name="send_delete_button")
+@commands.has_permissions(administrator=True)
+async def send_delete_button_cmd(ctx, channel: discord.TextChannel = None):
+    """Manually send a delete button to a temporary channel"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    if not channel:
+        channel = ctx.channel
+    
+    if channel.id not in temporary_channels:
+        await ctx.send("❌ This is not a temporary channel.", ephemeral=True)
+        return
+    
+    # Send delete button - call the helper function, not recursively!
+    button_msg = await send_delete_button_helper(channel)
+    
+    if button_msg:
+        await ctx.send("✅ Delete button sent!", ephemeral=True)
+    else:
+        await ctx.send("❌ Failed to send delete button.", ephemeral=True)
+
+@bot.command(name="cleanup_temp_channels")
+@commands.has_permissions(administrator=True)
+async def cleanup_temp_channels(ctx):
+    """Clean up all temporary channels"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    count = len(temporary_channels)
+    
+    if count == 0:
+        await ctx.send("✅ No temporary channels to clean up.", ephemeral=True)
+        return
+    
+    class ConfirmCleanupView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+            self.confirmed = False
+        
+        @discord.ui.button(label="✅ Yes, Delete All", style=discord.ButtonStyle.danger)
+        async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if interaction.user.id != ADMIN_USER_ID:
+                await interaction.response.send_message("❌ Only admin can perform this action.", ephemeral=True)
+                return
+            
+            self.confirmed = True
+            self.stop()
+            
+            channels_deleted = 0
+            channels_to_delete = list(temporary_channels.keys())
+            
+            for channel_id in channels_to_delete:
+                channel = ctx.guild.get_channel(channel_id)
+                if channel:
+                    try:
+                        await channel.delete(reason="Bulk cleanup by admin")
+                        channels_deleted += 1
+                    except:
+                        pass
+            
+            # Clear data
+            temporary_channels.clear()
+            user_temporary_channels.clear()
+            
+            await interaction.response.send_message(
+                f"✅ Deleted {channels_deleted} temporary channels.",
+                ephemeral=True
+            )
+            
+            # Update the original message
+            embed = discord.Embed(
+                title="✅ Cleanup Complete",
+                description=f"Deleted {channels_deleted} temporary channels.",
+                color=discord.Color.green()
+            )
+            await interaction.message.edit(embed=embed, view=None)
+        
+        @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if interaction.user.id != ADMIN_USER_ID:
+                await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
+                return
+            
+            self.confirmed = False
+            self.stop()
+            
+            await interaction.response.send_message("❌ Cleanup cancelled.", ephemeral=True)
+            
+            embed = discord.Embed(
+                title="❌ Cleanup Cancelled",
+                description="No channels were deleted.",
+                color=discord.Color.grey()
+            )
+            await interaction.message.edit(embed=embed, view=None)
+    
+    embed = discord.Embed(
+        title="🧹 Cleanup Temporary Channels",
+        description=f"This will delete **{count}** temporary channels.\n\n"
+                   f"**Are you sure?** This action cannot be undone!\n"
+                   f"All messages in these channels will be lost.",
+        color=discord.Color.red()
+    )
+    
+    view = ConfirmCleanupView()
+    await ctx.send(embed=embed, view=view)
+
+@bot.command(name="set_inactivity_timeout")
+@commands.has_permissions(administrator=True)
+async def set_inactivity_timeout(ctx, hours: int):
+    """Set the inactivity timeout for temporary channels"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    if hours < 1 or hours > 24:
+        await ctx.send("❌ Timeout must be between 1 and 24 hours.", ephemeral=True)
+        return
+    
+    seconds = hours * 3600
+    config['INACTIVITY_TIMEOUT'] = str(seconds)
+    
+    with open('config.txt', 'w') as f:
+        for key, value in config.items():
+            f.write(f"{key}={value}\n")
+    
+    global INACTIVITY_TIMEOUT
+    INACTIVITY_TIMEOUT = seconds
+    
+    # Restart the inactivity check task
+    inactivity_check.cancel()
+    inactivity_check.start()
+    
+    embed = discord.Embed(
+        title="✅ Inactivity Timeout Updated",
+        description=f"Delete buttons will now appear after **{hours} hours** of inactivity.",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+@bot.command(name="test_button")
+@commands.has_permissions(administrator=True)
+async def test_button(ctx):
+    """Test the delete button functionality"""
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
+        return
+    
+    # Create a test view
+    view = DeleteChannelView(ctx.channel.id, ctx.author.id)
+    
+    embed = discord.Embed(
+        title="🛠️ Test Delete Button",
+        description="This is a test of the delete button functionality.\n\n"
+                   "Only you (the admin) can press this button!",
+        color=discord.Color.blue()
+    )
+    
+    await ctx.send(embed=embed, view=view)
+    await ctx.send("✅ Test button sent! Try pressing it.")
 
 @bot.command(name="active_chats")
 async def active_chats(ctx):
@@ -954,6 +1824,7 @@ async def debug_ids(ctx):
     embed.add_field(name="Demo Team Channel ID", value=f"`{DEMONSTRATION_TEAM_CHANNEL_ID}`", inline=True)
     embed.add_field(name="General Chat Channel ID", value=f"`{GENERAL_CHAT_CHANNEL_ID}`", inline=True)
     embed.add_field(name="Admin User ID", value=f"`{ADMIN_USER_ID}`", inline=True)
+    embed.add_field(name="Temp Channels Category ID", value=f"`{TEMPORARY_CHANNELS_CATEGORY_ID}`", inline=True)
     embed.add_field(name="Bot User ID", value=f"`{bot.user.id}`", inline=True)
     
     # Check if we're in the rules channel
@@ -1159,6 +2030,101 @@ async def send_dm(ctx, member: discord.Member, *, message: str):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
 
+@bot.command(name="remove_check")
+@commands.has_permissions(administrator=True)
+async def remove_check(ctx, member: discord.Member):
+    """Manually remove a user's green check mark (for testing)"""
+    try:
+        rules_channel = ctx.guild.get_channel(RULES_CHANNEL_ID)
+        if rules_channel:
+            rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+            
+            # Find the green check mark reaction
+            for reaction in rules_message.reactions:
+                if str(reaction.emoji) == '✅':
+                    # Remove this user's reaction
+                    await reaction.remove(member)
+                    await ctx.send(f"✅ Removed green check mark reaction for {member.mention}")
+                    
+                    # Also cleanup their data
+                    await cleanup_user_data(member.id)
+                    await ctx.send(f"🗑️ Cleaned up data for {member.mention}")
+                    return
+        
+        await ctx.send("❌ Could not find green check mark reaction")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
+@bot.command(name="check_consistency")
+@commands.has_permissions(administrator=True)
+async def check_consistency(ctx):
+    """Check consistency between registry and green check marks"""
+    guild = ctx.guild
+    rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+    
+    if not rules_channel:
+        await ctx.send("❌ Rules channel not found")
+        return
+    
+    try:
+        rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+        
+        # Get users who reacted with green check
+        green_check_users = set()
+        for reaction in rules_message.reactions:
+            if str(reaction.emoji) == '✅':
+                async for user in reaction.users():
+                    if not user.bot:
+                        green_check_users.add(user.id)
+        
+        embed = discord.Embed(
+            title="🔍 Registry Consistency Check",
+            color=discord.Color.blue()
+        )
+        
+        # Check registered users without green check
+        missing_check = []
+        for user_id_str in registered_users.keys():
+            user_id = int(user_id_str)
+            if user_id not in green_check_users:
+                member = guild.get_member(user_id)
+                if member:
+                    missing_check.append(f"{member.name} (ID: {user_id})")
+        
+        if missing_check:
+            embed.add_field(
+                name="❌ Registered users WITHOUT green check",
+                value="\n".join(missing_check[:10]) + (f"\n...and {len(missing_check)-10} more" if len(missing_check) > 10 else ""),
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="✅ All registered users have green check",
+                value="No issues found!",
+                inline=False
+            )
+        
+        # Check users with green check but not registered
+        not_registered = []
+        for user_id in green_check_users:
+            if str(user_id) not in registered_users:
+                member = guild.get_member(user_id)
+                if member:
+                    not_registered.append(f"{member.name} (ID: {user_id})")
+        
+        if not_registered:
+            embed.add_field(
+                name="⚠️ Users with green check but NOT registered",
+                value="\n".join(not_registered[:10]) + (f"\n...and {len(not_registered)-10} more" if len(not_registered) > 10 else ""),
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Total registered: {len(registered_users)} | Total green checks: {len(green_check_users)}")
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}")
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
@@ -1171,7 +2137,7 @@ async def on_command_error(ctx, error):
         print(f"Error: {error}")
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Family Registration & Chat Forwarding Bot...")
+    print("\n🚀 Starting Family Registration & Temporary Channels Bot...")
     print("📝 Make sure your config.txt has the correct values!")
     print("\n=== REQUIRED CONFIG VALUES ===")
     print("TOKEN=your_bot_token_here")
@@ -1183,14 +2149,21 @@ if __name__ == "__main__":
     print("GENERAL_CHAT_CHANNEL_ID=general_chat_channel_id_here")
     print("NATIONAL_TEAM_CHANNEL_ID=national_team_channel_id_here")
     print("DEMONSTRATION_TEAM_CHANNEL_ID=demonstration_team_channel_id_here")
-    print("NATIONAL_TEAM_ROLE_ID=national_team_role_id_here")
-    print("DEMONSTRATION_TEAM_ROLE_ID=demonstration_team_role_id_here")
+    print("TEMPORARY_CHANNELS_CATEGORY_ID=temporary_channels_category_id_here")
+    print("INACTIVITY_TIMEOUT=7200 (2 hours in seconds)")
+    print("INACTIVITY_CHECK_INTERVAL=300 (5 minutes)")
     print("\n=== HOW IT WORKS ===")
     print("1. Users react to ✅ in rules channel to register")
     print("2. Registration happens via DM")
-    print("3. Messages in monitored channels are forwarded to admin")
-    print("4. Admin can reply directly to forwarded messages")
-    print("5. All original messages in channels are deleted")
+    print("3. Messages in monitored channels create temporary private channels")
+    print("4. Only admin and the user can access the temporary channel")
+    print("5. After inactivity, a delete button appears (admin only)")
+    print("\n=== NEW FEATURES ===")
+    print("🔒 Private temporary channels for each conversation")
+    print("🛑 Delete button appears after inactivity (admin only)")
+    print("🔄 Button disappears when conversation resumes")
+    print("✅ Button-only deletion (no auto-delete)")
+    print("📁 Organized in a dedicated category")
     print()
     
     if not TOKEN:
