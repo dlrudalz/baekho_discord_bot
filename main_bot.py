@@ -389,13 +389,15 @@ def bot_channel_only():
 # =============================================================================
 # REGISTRATION VIEW CLASSES
 # =============================================================================
+# Update the CombinedMuteView class with this corrected version:
 
 class CombinedMuteView(discord.ui.View):
     """
     Combined view for mute notifications with single confirmation button.
     
     Guides users through muting channel notifications as a required
-    registration step.
+    registration step. The button appears after 60 seconds to prevent
+    immediate pressing.
     """
     
     def __init__(self, user_id: int, child_name: str, role: str, role_display: str, teams_selected: list):
@@ -405,10 +407,74 @@ class CombinedMuteView(discord.ui.View):
         self.role = role
         self.role_display = role_display
         self.teams_selected = teams_selected
+        self.button_enabled = False
+        self.message = None
         
-    @discord.ui.button(label="✅ I've Muted Notifications", style=discord.ButtonStyle.green, emoji="✅", row=0)
-    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def on_timeout(self) -> None:
+        """Handle view timeout by removing temporary access."""
+        guild = bot.get_guild(GUILD_ID)
+        member = guild.get_member(self.user_id) if guild else None
+        
+        if member:
+            try:
+                general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
+                if general_chat:
+                    await general_chat.set_permissions(member, overwrite=None)
+                    print(f"🔄 Removed temporary access for {member.name} due to timeout")
+            except Exception as e:
+                print(f"⚠️ Error removing temporary access on timeout: {e}")
+    
+    async def setup_button(self):
+        """Setup the initial disabled button."""
+        # Create initial disabled button
+        self.confirm_button = discord.ui.Button(
+            label="⏳ Please wait 60 seconds...",
+            style=discord.ButtonStyle.gray,
+            emoji="⏳",
+            row=0,
+            disabled=True
+        )
+        self.confirm_button.callback = self.confirm_button_callback
+        self.add_item(self.confirm_button)
+    
+    async def start_timer(self):
+        """Start the 60-second timer before enabling the button."""
+        # Wait for 60 seconds
+        await asyncio.sleep(60)
+        
+        # Enable the button
+        self.button_enabled = True
+        
+        # Remove the disabled button
+        self.remove_item(self.confirm_button)
+        
+        # Create enabled button
+        enabled_button = discord.ui.Button(
+            label="✅ I've Muted Notifications",
+            style=discord.ButtonStyle.green,
+            emoji="✅",
+            row=0
+        )
+        enabled_button.callback = self.confirm_button_callback
+        self.add_item(enabled_button)
+        
+        # Update the message to show the enabled button
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+                print(f"✅ Mute button enabled for user ID {self.user_id} after 60-second delay")
+        except Exception as e:
+            print(f"⚠️ Error updating mute button: {e}")
+    
+    async def confirm_button_callback(self, interaction: discord.Interaction):
         """Handle confirmation that notifications have been muted."""
+        if not self.button_enabled:
+            await interaction.response.send_message(
+                "⏳ Please wait for the timer to finish before clicking this button.",
+                ephemeral=True
+            )
+            return
+            
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
             return
@@ -421,7 +487,10 @@ class CombinedMuteView(discord.ui.View):
         for child in self.children:
             child.disabled = True
         
-        await interaction.response.edit_message(content="✅ **Notifications muted!** Completing registration...", view=self)
+        await interaction.response.edit_message(
+            content="✅ **Notifications muted!** Completing registration...",
+            view=self
+        )
         
         # Complete registration process
         await asyncio.sleep(1.5)
@@ -445,20 +514,6 @@ class CombinedMuteView(discord.ui.View):
                 print(f"✅ Removed temporary access from #{general_chat.name} for {member.name}")
         except Exception as e:
             print(f"⚠️ Error removing temporary access: {e}")
-    
-    async def on_timeout(self) -> None:
-        """Handle view timeout by removing temporary access."""
-        guild = bot.get_guild(GUILD_ID)
-        member = guild.get_member(self.user_id) if guild else None
-        
-        if member:
-            try:
-                general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-                if general_chat:
-                    await general_chat.set_permissions(member, overwrite=None)
-                    print(f"🔄 Removed temporary access for {member.name} due to timeout")
-            except Exception as e:
-                print(f"⚠️ Error removing temporary access on timeout: {e}")
 
 class FinalConfirmationView(discord.ui.View):
     """
@@ -548,12 +603,19 @@ class FinalConfirmationView(discord.ui.View):
                           f"1. Right-click on #{channel_name}\n"
                           f"2. Left-click on **'Mute Channel'**\n"
                           f"3. Select **'Until I turn it back on'**\n\n"
-                          f"**After muting, click the button below to confirm.**",
+                          f"**⚠️ IMPORTANT: You must wait 60 seconds before confirming!**\n"
+                          f"The confirmation button will appear after 60 seconds.\n"
+                          f"This gives you time to actually mute the channel.",
                 color=discord.Color.red()
             )
             
             view = CombinedMuteView(self.user_id, self.child_name, self.role, self.role_display, self.teams_selected)
-            await dm_channel.send(embed=mute_embed, view=view)
+            await view.setup_button()  # Setup the disabled button
+            mute_message = await dm_channel.send(embed=mute_embed, view=view)
+            view.message = mute_message  # Store the message reference
+
+            # Start the timer for the button to appear
+            asyncio.create_task(view.start_timer())
             
             print(f"👤 {interaction.user.name} moved to combined mute step")
         else:
@@ -2876,7 +2938,7 @@ async def log_successful_registration(
                       f"**Registered:** <t:{int(time.time())}:R>",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc)
-        )
+    )
         await send_to_log_channel(guild, "", log_embed)
 
 # =============================================================================
