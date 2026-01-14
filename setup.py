@@ -1,9 +1,3 @@
-"""
-Server Setup Bot for Tae Kwon Do Discord Server
-A comprehensive bot for setting up and managing a Discord server with categories, channels, roles, and permissions.
-This bot creates an organized server structure and maintains configuration in a grouped format.
-"""
-
 import discord
 from discord.ext import commands
 import os
@@ -215,6 +209,88 @@ async def check_if_already_setup(guild):
                 pass
     
     return False, "Server setup has not been completed yet"
+
+async def ensure_general_chat_mute_message_setup(guild: discord.Guild, general_chat: discord.TextChannel, family_role: discord.Role):
+    """
+    Ensure the general-chat channel has the permanent mute instruction message.
+    
+    This message explains the muting system and allows users to react to gain
+    permission to type in the channel.
+    
+    Args:
+        guild: Discord guild object
+        general_chat: The general chat channel
+        family_role: The family role object
+    """
+    if not general_chat:
+        print("❌ General chat channel not found")
+        return
+    
+    try:
+        # Check existing pinned messages
+        pinned_messages = await general_chat.pins()
+        
+        # Look for our mute instruction message
+        mute_message_found = False
+        for pinned_msg in pinned_messages:
+            if pinned_msg.author == bot.user and pinned_msg.embeds:
+                for embed in pinned_msg.embeds:
+                    if embed.title and "general-chat" in embed.title.lower():
+                        mute_message_found = True
+                        break
+            if mute_message_found:
+                break
+        
+        # Create and pin if not found
+        if not mute_message_found:
+            # Send temporary message while setting up
+            temp_msg = await general_chat.send("🔄 Setting up general chat permissions...")
+            
+            # COMBINED EMBED: How This Chat Works + How to Get Access
+            combined_embed = discord.Embed(
+                title="🔒 How to Access & Use General-Chat",
+                description=(
+                    "**IMPORTANT:** Please Read Over Everything!\n\n"
+                    "## 🔐 **HOW TO GET ACCESS**\n"
+                    "### **Step 1: Mute This Channel:**\n"
+                    "   📱 **On Mobile:**\n"
+                    "   • Long-press on this channel name\n"
+                    "   • Tap 'Mute Channel'\n"
+                    "   • Select 'Until I turn it back on'\n\n"
+                    "   💻 **On Desktop:**\n"
+                    "   • Right-click on this channel\n"
+                    "   • Click 'Mute Channel'\n"
+                    "   • Select 'Until I turn it back on'\n\n"
+                    "### **Step 2: Gain Typing Permission**\n"
+                    "• React with 🔇 below to unlock typing permission\n"
+                    "• This reaction grants you permission to type in this channel\n"
+                    "• You only need to do this once\n\n"
+                    "## ⚠️ **IMPORTANT NOTES**\n"
+                    "• This is not group chat.\n"
+                    "• It is for an individual who have questions for us.\n"
+                ),
+                color=discord.Color.red()
+            )
+            
+            # Add footer with reminder
+            combined_embed.set_footer(text="⬇️⬇️⬇️ REACT WITH 🔇 TO GAIN TYPING PERMISSION")
+            
+            # Send the combined message
+            mute_message = await general_chat.send(embed=combined_embed)
+            
+            # Add the reaction
+            await mute_message.add_reaction('🔇')
+            
+            # Pin the message
+            await mute_message.pin()
+            
+            # Delete temporary message
+            await temp_msg.delete()
+            
+            print("✅ Created and pinned combined general-chat instruction message")
+            
+    except Exception as e:
+        print(f"❌ Error ensuring general-chat instruction message: {e}")
 
 # ============================================================================
 # BOT EVENTS
@@ -644,7 +720,7 @@ async def setup_server(ctx):
     try:
         # ========== CREATE ROLES ==========
         await ctx.send("🔄 **Step 1/6: Creating roles...**")
-        
+
         try:
             # 1. Master Lee's Family Role (Admin role)
             master_lee_family_role = await guild.create_role(
@@ -655,11 +731,6 @@ async def setup_server(ctx):
                 reason="Admin role for Master Lee's family members"
             )
             created_ids['MASTER_LEE_FAMILY_ROLE_ID'] = str(master_lee_family_role.id)
-            
-            # Assign to admin user
-            admin_user = guild.get_member(ADMIN_USER_ID)
-            if admin_user:
-                await admin_user.add_roles(master_lee_family_role, reason="Admin role assignment")
             
             # 2. Family Member Role (For registered parents/grandparents)
             family_role = await guild.create_role(
@@ -691,7 +762,27 @@ async def setup_server(ctx):
             )
             created_ids['DEMONSTRATION_TEAM_ROLE_ID'] = str(demonstration_role.id)
             
-            await ctx.send("✅ **Roles created:** Master Lee's Family, Family Member, National Team, Demonstration Team")
+            # 5. Student Role (same permissions as Family Member)
+            student_role = await guild.create_role(
+                name="Student",
+                color=discord.Color.purple(),
+                hoist=True,
+                mentionable=True,
+                reason="Role for students"
+            )
+            created_ids['STUDENT_ROLE_ID'] = str(student_role.id)
+            
+            # 6. Instructor Role (same permissions as Master Lee's Family)
+            instructor_role = await guild.create_role(
+                name="Instructor",
+                color=discord.Color.dark_gold(),
+                hoist=True,
+                mentionable=True,
+                reason="Role for instructors"
+            )
+            created_ids['INSTRUCTOR_ROLE_ID'] = str(instructor_role.id)
+            
+            await ctx.send("✅ **Roles created:** Master Lee's Family, Family Member, National Team, Demonstration Team, Student, Instructor")
             
         except discord.Forbidden as e:
             await ctx.send(f"❌ Error creating roles: {e}\n\nPlease make sure the bot's role is ABOVE other roles in Server Settings → Roles")
@@ -805,7 +896,6 @@ async def setup_server(ctx):
                 send_messages=False,
                 view_channel=False
             )
-            
             # Allow bot to access the channel with full permissions
             await schedule_channel.set_permissions(guild.me,
                 read_messages=True,
@@ -814,7 +904,6 @@ async def setup_server(ctx):
                 view_channel=True,
                 read_message_history=True
             )
-            
             # Allow Master Lee's Family role to send messages
             await schedule_channel.set_permissions(master_lee_family_role,
                 read_messages=True,
@@ -823,14 +912,27 @@ async def setup_server(ctx):
                 read_message_history=True,
                 embed_links=True,
                 attach_files=True
-            )
-            
+            ) 
             # Allow Family Member role to READ ONLY (can't send messages)
             await schedule_channel.set_permissions(family_role,
                 read_messages=True,
                 send_messages=False,  # CHANGED FROM True TO False
                 view_channel=True,
                 read_message_history=True
+            )
+            await schedule_channel.set_permissions(student_role,
+                read_messages=True,
+                send_messages=False,  # Same as Family Member (read-only)
+                view_channel=True,
+                read_message_history=True
+            )
+            await schedule_channel.set_permissions(instructor_role,
+                read_messages=True,
+                send_messages=True,      # Can send messages (same as Master Lee's Family)
+                view_channel=True,
+                read_message_history=True,
+                embed_links=True,
+                attach_files=True
             )
             
             # 3. 💬 PRIVATE CONVERSATION Category - no channels by default
@@ -861,6 +963,17 @@ async def setup_server(ctx):
                 manage_messages=True,
                 read_message_history=True
             )
+            await general_announcement.set_permissions(student_role,
+                read_messages=True,
+                send_messages=False,  # READ ONLY (same as Family Member)
+                read_message_history=True
+            )
+            await general_announcement.set_permissions(instructor_role,
+                read_messages=True,
+                send_messages=True,      # Can send messages
+                manage_messages=True,
+                read_message_history=True
+            )
             
             # b) demonstration-team (private - Demonstration Team role only, read-only)
             demonstration_team_channel = await announcements_category.create_text_channel(
@@ -888,6 +1001,12 @@ async def setup_server(ctx):
             )
             # Bot also needs access
             await demonstration_team_channel.set_permissions(guild.me,
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                read_message_history=True
+            )
+            await demonstration_team_channel.set_permissions(instructor_role,
                 read_messages=True,
                 send_messages=True,
                 manage_messages=True,
@@ -925,60 +1044,77 @@ async def setup_server(ctx):
                 manage_messages=True,
                 read_message_history=True
             )
-            
-            # 5. 💭 TEXT CHANNELS Category
-            # a) general-chat (public - Family Member role only, but monitored for private chats)
-            general_chat = await text_channels_category.create_text_channel(
-                name="general-chat",
-                topic="General chat for family members - Messages create private conversations with admin",
-                reason="General chat channel"
-            )
-            created_ids['GENERAL_CHAT_CHANNEL_ID'] = str(general_chat.id)
-            
-            # Set permissions for general-chat (Family Member role only)
-            await general_chat.set_permissions(guild.default_role,
-                read_messages=False,
-                send_messages=False
-            )
-            await general_chat.set_permissions(family_role,
-                read_messages=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-                embed_links=True
-            )
-            await general_chat.set_permissions(master_lee_family_role,
+            await national_team_channel.set_permissions(instructor_role,
                 read_messages=True,
                 send_messages=True,
                 manage_messages=True,
                 read_message_history=True
             )
-            
-            # ========== ADD EMBEDDED REDIRECTION MESSAGE TO GENERAL-CHAT ==========
-            # Send and pin an embedded message explaining the redirection to private conversations
-            redirect_embed = discord.Embed(
-                title="💬 How This Chat Works",
-                description="**Important Notice:**\n\n"
-                        "When you send a message in this channel, it will be automatically redirected to a private conversation.\n\n"
-                        "**Here's what happens:**\n"
-                        "1️⃣ Your message will be **automatically deleted** from this channel\n"
-                        "2️⃣ A **private chat channel** will be created for you and the admin\n"
-                        "3️⃣ Your message will appear in the private chat\n"
-                        "4️⃣ You can continue the conversation privately with the admin\n\n"
-                        "**Why we do this:**\n"
-                        "• To maintain **privacy** for your conversations\n"
-                        "• To keep the general chat **clean and organized**\n"
-                        "• To ensure **confidential discussions** stay private\n\n"
-                        "**Note:** Only you and the admin can see the private chat. The admin can delete it at any time using the pinned button in the private chat.",
-                color=discord.Color.blue()
+
+            # 5. 💭 TEXT CHANNELS Category
+            # a) general-chat (HIDDEN until registration - only visible after getting Family Member role)
+            general_chat = await text_channels_category.create_text_channel(
+                name="general-chat",
+                topic="General chat for family members - Visible only after completing registration",
+                reason="General chat channel - Hidden until registration"
             )
-            redirect_embed.set_footer(text="This message will remain pinned for reference")
-            
-            # Send the embedded message and pin it
-            redirect_message = await general_chat.send(embed=redirect_embed)
-            await redirect_message.pin()
-            
-            print(f"✅ Added embedded redirection message to general-chat")
+            created_ids['GENERAL_CHAT_CHANNEL_ID'] = str(general_chat.id)
+
+            # Set permissions for general-chat (HIDDEN by default, only visible after getting Family Member role)
+            await general_chat.set_permissions(guild.default_role,
+                read_messages=False,      # Hidden from @everyone
+                send_messages=False,
+                view_channel=False
+            )
+
+            # Bot needs access
+            await general_chat.set_permissions(guild.me,
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                view_channel=True,
+                read_message_history=True
+            )
+
+            # Admin needs access
+            if admin_user:
+                await general_chat.set_permissions(admin_user,
+                    read_messages=True,
+                    send_messages=True,
+                    manage_messages=True,
+                    view_channel=True,
+                    read_message_history=True
+                )
+
+            # Master Lee's Family role can see it AND send messages by default
+            await general_chat.set_permissions(master_lee_family_role,
+                read_messages=True,
+                send_messages=True,
+                view_channel=True,
+                read_message_history=True
+            )
+
+            # Family Member role CAN see by default but CANNOT send by default (will be enabled after mute reaction)
+            await general_chat.set_permissions(family_role,
+                read_messages=True,      # Can view the channel
+                send_messages=False,     # Cannot send until they react with 🔇
+                view_channel=True,       # Can see the channel
+                read_message_history=True
+            )
+            await general_chat.set_permissions(student_role,
+                read_messages=True,      # Can view the channel
+                send_messages=False,     # Cannot send until they react with 🔇 (same as Family Member)
+                view_channel=True,       # Can see the channel
+                read_message_history=True
+            )
+            await general_chat.set_permissions(instructor_role,
+                read_messages=True,
+                send_messages=True,      # Can send by default
+                view_channel=True,
+                read_message_history=True
+            )
+
+            await ensure_general_chat_mute_message_setup(ctx.guild, general_chat, family_role)
             
             # 6. 🤖 BOT Category - All channels visible only to admin user
             # a) command (Admin only)
@@ -1298,7 +1434,7 @@ async def setup_check(ctx):
     )
     
     # Check roles
-    required_roles = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team"]
+    required_roles = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team", "Student", "Instructor"]
     roles_found = []
     roles_missing = []
     
@@ -1816,8 +1952,8 @@ async def reset_setup(ctx):
                     pass
         
         # Delete roles (except @everyone)
-        roles_to_delete = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team"]
-        
+        roles_to_delete = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team", "Student", "Instructor"]
+
         for role_name in roles_to_delete:
             role = discord.utils.get(guild.roles, name=role_name)
             if role and not role.is_default():
@@ -1833,6 +1969,7 @@ async def reset_setup(ctx):
             'NATIONAL_TEAM_ROLE_ID', 'DEMONSTRATION_TEAM_ROLE_ID',
             'NATIONAL_TEAM_CHANNEL_ID', 'DEMONSTRATION_TEAM_CHANNEL_ID',
             'GENERAL_CHAT_CHANNEL_ID', 'MASTER_LEE_FAMILY_ROLE_ID',
+            'STUDENT_ROLE_ID', 'INSTRUCTOR_ROLE_ID',
             'TEMPORARY_CHANNELS_CATEGORY_ID', 'ADMIN_CHAT_CHANNEL_ID',
             'LOG_CHANNEL_ID', 'SCHEDULE_CHANNEL_ID', 'COMMAND_CHANNEL_ID',
             'GENERAL_ANNOUNCEMENT_CHANNEL_ID', 'WELCOME_CHANNEL_ID',
@@ -1931,3 +2068,4 @@ if __name__ == "__main__":
         print("   Please check your token in config.txt")
     except Exception as e:
         print(f"❌ ERROR starting bot: {e}")
+
