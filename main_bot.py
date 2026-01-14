@@ -2978,6 +2978,12 @@ async def chat_command(ctx):
                    "• `!bot_command chat remove_check @user` - Remove user's check\n"
                    "• `!bot_command chat update_message_id ID` - Update rules message ID\n"
                    "• `!bot_command chat resend_delete_button #channel` - Resend delete button\n\n"
+                   "**👑 Role Management:**\n"
+                   "• `!bot_command chat assign_instructor @user` - Assign Instructor role\n"
+                   "• `!bot_command chat assign_master_lee_family @user` - Assign Master Lee's Family role\n"
+                   "• `!bot_command chat assign_both_roles @user` - Assign both roles\n"
+                   "• `!bot_command chat remove_role @user role_type` - Remove special role (instructor/master_family/both)\n"
+                   "• `!bot_command chat list_special_roles` - List special role members\n"
                    "**🛠️ Testing & Debug:**\n"
                    "• `!bot_command chat test_button` - Test delete button\n"
                    "• `!bot_command chat test_reaction` - Test reaction detection\n"
@@ -3688,6 +3694,314 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
     embed.add_field(name="New Name", value=cleaned_name, inline=True)
     embed.add_field(name="Old Nickname", value=old_nickname, inline=False)
     embed.add_field(name="New Nickname", value=new_nickname, inline=False)
+    
+    await ctx.send(embed=embed)
+
+# =============================================================================
+# ROLE MANAGEMENT COMMANDS
+# =============================================================================
+
+@bot_command.command(name="assign_instructor")
+@bot_channel_only()
+async def assign_instructor(ctx, member: discord.Member):
+    """
+    Assign Instructor role to a user.
+    
+    This command will:
+    1. Assign the Instructor role
+    2. Grant same channel access as Master Lee's Family
+    3. Log the assignment
+    """
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    
+    if not instructor_role:
+        await ctx.send("❌ Instructor role not found in the server configuration!", ephemeral=True)
+        return
+    
+    try:
+        # Assign Instructor role
+        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
+        
+        # Log the assignment
+        embed = discord.Embed(
+            title="👨‍🏫 Instructor Role Assigned",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Assigned by:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.gold(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", embed)
+        
+        # Send success message
+        success_embed = discord.Embed(
+            title="✅ Instructor Role Assigned",
+            description=f"Successfully assigned **Instructor** role to {member.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=success_embed)
+        
+        print(f"👨‍🏫 Assigned Instructor role to {member.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error assigning Instructor role: {e}", ephemeral=True)
+
+@bot_command.command(name="assign_master_lee_family")
+@bot_channel_only()
+async def assign_master_lee_family(ctx, member: discord.Member):
+    """
+    Assign Master Lee's Family role to a user.
+    
+    This role:
+    1. Grants special privileges
+    2. Exempts from standard registration
+    3. Provides special channel access
+    """
+    guild = ctx.guild
+    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    
+    if not master_family_role:
+        await ctx.send("❌ Master Lee's Family role not found in the server configuration!", ephemeral=True)
+        return
+    
+    try:
+        # Assign Master Lee's Family role
+        await member.add_roles(master_family_role, reason="Master Lee's Family role assigned by admin")
+        
+        # Remove green check if they have one (since they're exempt from registration)
+        await remove_green_check_reaction(member)
+        
+        # Send welcome DM to the user
+        try:
+            dm_channel = await member.create_dm()
+            welcome_embed = discord.Embed(
+                title="👑 Welcome to Master Lee's Family!",
+                description="You have been granted the **Master Lee's Family** role!\n\n"
+                          "**Special Privileges:**\n"
+                          "• Full access to all channels\n"
+                          "• No need to complete standard registration\n"
+                          "• Special family member status\n\n"
+                          "Welcome to the inner circle!",
+                color=discord.Color.gold()
+            )
+            await dm_channel.send(embed=welcome_embed)
+        except discord.Forbidden:
+            print(f"⚠️ Cannot send DM to {member.name}")
+        
+        # Log the assignment
+        embed = discord.Embed(
+            title="👑 Master Lee's Family Role Assigned",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Assigned by:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.purple(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", embed)
+        
+        # Send success message
+        success_embed = discord.Embed(
+            title="✅ Master Lee's Family Role Assigned",
+            description=f"Successfully assigned **Master Lee's Family** role to {member.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=success_embed)
+        
+        print(f"👑 Assigned Master Lee's Family role to {member.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error assigning Master Lee's Family role: {e}", ephemeral=True)
+
+@bot_command.command(name="assign_both_roles")
+@bot_channel_only()
+async def assign_both_roles(ctx, member: discord.Member):
+    """
+    Assign both Instructor and Master Lee's Family roles to a user.
+    
+    This is useful for instructors who are also part of Master Lee's family.
+    """
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    
+    if not instructor_role:
+        await ctx.send("❌ Instructor role not found!", ephemeral=True)
+        return
+    
+    if not master_family_role:
+        await ctx.send("❌ Master Lee's Family role not found!", ephemeral=True)
+        return
+    
+    try:
+        # Assign both roles
+        await member.add_roles(instructor_role, master_family_role, 
+                              reason="Both roles assigned by admin")
+        
+        # Remove green check if they have one
+        await remove_green_check_reaction(member)
+        
+        # Send welcome DM
+        try:
+            dm_channel = await member.create_dm()
+            welcome_embed = discord.Embed(
+                title="🎉 Double Role Assignment!",
+                description="You have been granted **both special roles**:\n\n"
+                          "**👨‍🏫 Instructor Role:**\n"
+                          "• Teaching permissions\n"
+                          "• Training access\n\n"
+                          "**👑 Master Lee's Family Role:**\n"
+                          "• Full channel access\n"
+                          "• Family member status\n"
+                          "• No registration required\n\n"
+                          "Welcome to your new positions!",
+                color=discord.Color.gold()
+            )
+            await dm_channel.send(embed=welcome_embed)
+        except discord.Forbidden:
+            print(f"⚠️ Cannot send DM to {member.name}")
+        
+        # Log the assignment
+        embed = discord.Embed(
+            title="🎉 Both Special Roles Assigned",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Roles:** Instructor + Master Lee's Family\n"
+                      f"**Assigned by:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.gold(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", embed)
+        
+        # Send success message
+        success_embed = discord.Embed(
+            title="✅ Both Roles Assigned",
+            description=f"Successfully assigned **Instructor** and **Master Lee's Family** roles to {member.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=success_embed)
+        
+        print(f"🎉 Assigned both roles to {member.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error assigning roles: {e}", ephemeral=True)
+
+@bot_command.command(name="remove_role")
+@bot_channel_only()
+async def remove_role(ctx, member: discord.Member, role_type: str):
+    """
+    Remove special role from a user.
+    
+    role_type options: 'instructor', 'master_family', 'both'
+    """
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    
+    role_type = role_type.lower()
+    
+    try:
+        removed_roles = []
+        reason = "Role removed by admin"
+        
+        if role_type == 'instructor' or role_type == 'both':
+            if instructor_role and instructor_role in member.roles:
+                await member.remove_roles(instructor_role, reason=reason)
+                removed_roles.append("Instructor")
+        
+        if role_type == 'master_family' or role_type == 'both':
+            if master_family_role and master_family_role in member.roles:
+                await member.remove_roles(master_family_role, reason=reason)
+                removed_roles.append("Master Lee's Family")
+        
+        if not removed_roles:
+            await ctx.send(f"❌ {member.mention} doesn't have the specified role(s) to remove.", ephemeral=True)
+            return
+        
+        # Log the removal
+        embed = discord.Embed(
+            title="🗑️ Special Role(s) Removed",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Removed Roles:** {', '.join(removed_roles)}\n"
+                      f"**Removed by:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", embed)
+        
+        # Send success message
+        success_embed = discord.Embed(
+            title="✅ Role(s) Removed",
+            description=f"Removed **{', '.join(removed_roles)}** role(s) from {member.mention}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=success_embed)
+        
+        print(f"🗑️ Removed {', '.join(removed_roles)} role(s) from {member.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to remove roles!", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error removing role: {e}", ephemeral=True)
+
+@bot_command.command(name="list_special_roles")
+@bot_channel_only()
+async def list_special_roles(ctx):
+    """
+    List all users with Instructor and Master Lee's Family roles.
+    """
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    
+    if not instructor_role and not master_family_role:
+        await ctx.send("❌ Neither special role is configured!", ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="👑 Special Role Members",
+        description="List of members with Instructor and Master Lee's Family roles:",
+        color=discord.Color.purple()
+    )
+    
+    # List Instructor role members
+    if instructor_role:
+        instructors = [member.mention for member in instructor_role.members]
+        embed.add_field(
+            name=f"👨‍🏫 Instructors ({len(instructors)})",
+            value="\n".join(instructors) if instructors else "No instructors",
+            inline=False
+        )
+    
+    # List Master Lee's Family role members
+    if master_family_role:
+        family_members = [member.mention for member in master_family_role.members]
+        embed.add_field(
+            name=f"👑 Master Lee's Family ({len(family_members)})",
+            value="\n".join(family_members) if family_members else "No family members",
+            inline=False
+        )
+    
+    # List members with both roles
+    if instructor_role and master_family_role:
+        both_roles = []
+        for member in instructor_role.members:
+            if master_family_role in member.roles:
+                both_roles.append(member.mention)
+        
+        if both_roles:
+            embed.add_field(
+                name="🎉 Both Roles",
+                value="\n".join(both_roles),
+                inline=False
+            )
     
     await ctx.send(embed=embed)
 
