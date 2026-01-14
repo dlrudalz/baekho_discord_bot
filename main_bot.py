@@ -61,6 +61,8 @@ NATIONAL_TEAM_CHANNEL_ID = int(config.get('NATIONAL_TEAM_CHANNEL_ID', '0'))
 DEMONSTRATION_TEAM_CHANNEL_ID = int(config.get('DEMONSTRATION_TEAM_CHANNEL_ID', '0'))
 GENERAL_CHAT_CHANNEL_ID = int(config.get('GENERAL_CHAT_CHANNEL_ID', '0'))
 MASTER_LEE_FAMILY_ROLE_ID = int(config.get('MASTER_LEE_FAMILY_ROLE_ID', '0'))
+STUDENT_ROLE_ID = int(config.get('STUDENT_ROLE_ID', '0'))
+INSTRUCTOR_ROLE_ID = int(config.get('INSTRUCTOR_ROLE_ID', '0'))
 ADMIN_USER_ID = int(config.get('ADMIN_USER_ID', '0'))
 
 # Private conversation category ID (already set up by setup program)
@@ -86,6 +88,8 @@ print(f"   Demonstration Team Role ID: {DEMONSTRATION_TEAM_ROLE_ID}")
 print(f"   National Team Channel ID: {NATIONAL_TEAM_CHANNEL_ID}")
 print(f"   Demonstration Team Channel ID: {DEMONSTRATION_TEAM_CHANNEL_ID}")
 print(f"   Master Lee's Family Role ID: {MASTER_LEE_FAMILY_ROLE_ID}")
+print(f"   Student Role ID: {STUDENT_ROLE_ID}")
+print(f"   Instructor Role ID: {INSTRUCTOR_ROLE_ID}")
 print(f"   General Chat Channel ID: {GENERAL_CHAT_CHANNEL_ID}")
 print(f"   Admin User ID: {ADMIN_USER_ID}")
 print(f"   Private Conversation Category ID: {PRIVATE_CONVERSATION_CATEGORY_ID}")
@@ -305,15 +309,14 @@ async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord
     return False
 
 # =============================================================================
-# CHANNEL MANAGEMENT FUNCTIONS
+# GENERAL CHAT MUTE SYSTEM
 # =============================================================================
-
-async def ensure_general_chat_redirect_message(guild: discord.Guild) -> None:
+async def ensure_general_chat_mute_message(guild: discord.Guild) -> None:
     """
-    Ensure the general-chat channel has the pinned redirection message.
+    Check if the general-chat channel has the permanent mute instruction message.
+    Only checks and adds missing reactions - DOES NOT CREATE NEW MESSAGES.
     
-    This message explains the auto-forwarding system to users and remains
-    pinned for reference.
+    setup.py is responsible for creating the initial message.
     """
     general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
     if not general_chat:
@@ -324,44 +327,38 @@ async def ensure_general_chat_redirect_message(guild: discord.Guild) -> None:
         # Check existing pinned messages
         pinned_messages = await general_chat.pins()
         
-        # Look for our redirection message
-        redirect_message_found = False
+        # Look for our mute instruction message
+        mute_message_found = None
         for pinned_msg in pinned_messages:
             if pinned_msg.author == bot.user and pinned_msg.embeds:
                 for embed in pinned_msg.embeds:
-                    if embed.title and "How This Chat Works" in embed.title:
-                        redirect_message_found = True
+                    # Look for the message created by setup.py
+                    if embed.title and "How to Access & Use General-Chat" in embed.title:
+                        mute_message_found = pinned_msg
                         break
-            if redirect_message_found:
+            if mute_message_found:
                 break
         
-        # Create and pin if not found
-        if not redirect_message_found:
-            redirect_embed = discord.Embed(
-                title="💬 How This Chat Works",
-                description="**Important Notice:**\n\n"
-                           "When you send a message in this channel, it will be automatically redirected to a private conversation.\n\n"
-                           "**Here's what happens:**\n"
-                           "1️⃣ Your message will be **automatically deleted** from this channel\n"
-                           "2️⃣ A **private chat channel** will be created for you and the admin\n"
-                           "3️⃣ Your message will appear in the private chat\n"
-                           "4️⃣ You can continue the conversation privately with the admin\n\n"
-                           "**Why we do this:**\n"
-                           "• To maintain **privacy** for your conversations\n"
-                           "• To keep the general chat **clean and organized**\n"
-                           "• To ensure **confidential discussions** stay private\n\n"
-                           "**Note:** Only you and the admin can see the private chat.",
-                color=discord.Color.blue()
-            )
-            redirect_embed.set_footer(text="This message will remain pinned for reference")
+        # If message exists, just ensure it has the reaction
+        if mute_message_found:
+            # Check if it has the reaction
+            has_reaction = False
+            for reaction in mute_message_found.reactions:
+                if str(reaction.emoji) == '🔇':
+                    has_reaction = True
+                    break
             
-            redirect_message = await general_chat.send(embed=redirect_embed)
-            await redirect_message.pin()
-            
-            print("✅ Created and pinned redirection message in general-chat")
+            if not has_reaction:
+                await mute_message_found.add_reaction('🔇')
+                print(f"✅ Added missing 🔇 reaction to existing mute instruction message in #{general_chat.name}")
+            else:
+                print(f"✅ Mute instruction message found with reaction in #{general_chat.name}")
+        else:
+            # Message doesn't exist - setup.py should have created it
+            print("⚠️ Mute instruction message not found. Run !setup_server to create it.")
             
     except Exception as e:
-        print(f"❌ Error ensuring redirection message: {e}")
+        print(f"❌ Error checking mute instruction message: {e}")
 
 # =============================================================================
 # COMMAND ACCESS CONTROL
@@ -389,132 +386,6 @@ def bot_channel_only():
 # =============================================================================
 # REGISTRATION VIEW CLASSES
 # =============================================================================
-# Update the CombinedMuteView class with this corrected version:
-
-class CombinedMuteView(discord.ui.View):
-    """
-    Combined view for mute notifications with single confirmation button.
-    
-    Guides users through muting channel notifications as a required
-    registration step. The button appears after 60 seconds to prevent
-    immediate pressing.
-    """
-    
-    def __init__(self, user_id: int, child_name: str, role: str, role_display: str, teams_selected: list):
-        super().__init__(timeout=300)  # 5 minute timeout
-        self.user_id = user_id
-        self.child_name = child_name
-        self.role = role
-        self.role_display = role_display
-        self.teams_selected = teams_selected
-        self.button_enabled = False
-        self.message = None
-        
-    async def on_timeout(self) -> None:
-        """Handle view timeout by removing temporary access."""
-        guild = bot.get_guild(GUILD_ID)
-        member = guild.get_member(self.user_id) if guild else None
-        
-        if member:
-            try:
-                general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-                if general_chat:
-                    await general_chat.set_permissions(member, overwrite=None)
-                    print(f"🔄 Removed temporary access for {member.name} due to timeout")
-            except Exception as e:
-                print(f"⚠️ Error removing temporary access on timeout: {e}")
-    
-    async def setup_button(self):
-        """Setup the initial disabled button."""
-        # Create initial disabled button
-        self.confirm_button = discord.ui.Button(
-            label="⏳ Please wait 60 seconds...",
-            style=discord.ButtonStyle.gray,
-            emoji="⏳",
-            row=0,
-            disabled=True
-        )
-        self.confirm_button.callback = self.confirm_button_callback
-        self.add_item(self.confirm_button)
-    
-    async def start_timer(self):
-        """Start the 60-second timer before enabling the button."""
-        # Wait for 60 seconds
-        await asyncio.sleep(60)
-        
-        # Enable the button
-        self.button_enabled = True
-        
-        # Remove the disabled button
-        self.remove_item(self.confirm_button)
-        
-        # Create enabled button
-        enabled_button = discord.ui.Button(
-            label="✅ I've Muted Notifications",
-            style=discord.ButtonStyle.green,
-            emoji="✅",
-            row=0
-        )
-        enabled_button.callback = self.confirm_button_callback
-        self.add_item(enabled_button)
-        
-        # Update the message to show the enabled button
-        try:
-            if self.message:
-                await self.message.edit(view=self)
-                print(f"✅ Mute button enabled for user ID {self.user_id} after 60-second delay")
-        except Exception as e:
-            print(f"⚠️ Error updating mute button: {e}")
-    
-    async def confirm_button_callback(self, interaction: discord.Interaction):
-        """Handle confirmation that notifications have been muted."""
-        if not self.button_enabled:
-            await interaction.response.send_message(
-                "⏳ Please wait for the timer to finish before clicking this button.",
-                ephemeral=True
-            )
-            return
-            
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
-            return
-        
-        # Update user state
-        if self.user_id in user_states:
-            user_states[self.user_id]['notifications_muted'] = True
-        
-        # Disable all buttons
-        for child in self.children:
-            child.disabled = True
-        
-        await interaction.response.edit_message(
-            content="✅ **Notifications muted!** Completing registration...",
-            view=self
-        )
-        
-        # Complete registration process
-        await asyncio.sleep(1.5)
-        
-        guild = bot.get_guild(GUILD_ID)
-        member = guild.get_member(self.user_id) if guild else None
-        
-        if member:
-            # Remove temporary access granted during registration
-            await self.remove_temporary_access(guild, member)
-            await complete_registration(interaction.user, member)
-        else:
-            await interaction.followup.send("❌ Could not find you in the server. Please try again.", ephemeral=True)
-    
-    async def remove_temporary_access(self, guild: discord.Guild, member: discord.Member) -> None:
-        """Remove temporary access to general-chat channel after registration."""
-        try:
-            general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-            if general_chat:
-                await general_chat.set_permissions(member, overwrite=None)
-                print(f"✅ Removed temporary access from #{general_chat.name} for {member.name}")
-        except Exception as e:
-            print(f"⚠️ Error removing temporary access: {e}")
-
 class FinalConfirmationView(discord.ui.View):
     """
     Final confirmation view before registration completion.
@@ -535,16 +406,16 @@ class FinalConfirmationView(discord.ui.View):
         if self.teams_selected:
             team_list = []
             if "national" in self.teams_selected:
-                team_list.append("National Team 🔴")  # Changed from 🇺🇳 to 🔴
+                team_list.append("National Team 🔴")
             if "demonstration" in self.teams_selected:
-                team_list.append("Demonstration Team 🔵")  # Changed from 🎯 to 🔵
+                team_list.append("Demonstration Team 🔵")
             self.teams_text = ", ".join(team_list)
         else:
             self.teams_text = "No teams selected"
     
     @discord.ui.button(label="✅ Yes, Everything Looks Good!", style=discord.ButtonStyle.green, emoji="✅", row=0)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle final confirmation and proceed to mute step."""
+        """Handle final confirmation and complete registration."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
             return
@@ -552,72 +423,21 @@ class FinalConfirmationView(discord.ui.View):
         # Update user state
         if self.user_id in user_states:
             user_states[self.user_id]['waiting_for_final_confirmation'] = False
-            user_states[self.user_id]['waiting_for_mute'] = True
         
         # Disable buttons
         for child in self.children:
             child.disabled = True
         
-        await interaction.response.edit_message(content="✅ **Registration confirmed!** Moving to mute step...", view=self)
+        await interaction.response.edit_message(content="✅ **Registration confirmed!** Completing registration...", view=self)
         
-        # Proceed to mute notifications step
+        # Complete registration process
         await asyncio.sleep(1.5)
         
         guild = bot.get_guild(GUILD_ID)
         member = guild.get_member(self.user_id) if guild else None
         
         if member:
-            dm_channel = await interaction.user.create_dm()
-            
-            # Grant temporary access for muting
-            general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-            if not general_chat:
-                await dm_channel.send("❌ Could not find the general-chat channel. Please contact an administrator.")
-                return
-            
-            try:
-                await general_chat.set_permissions(
-                    member,
-                    read_messages=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    reason="Temporary access for muting notifications during registration"
-                )
-                print(f"✅ Granted temporary access to #{general_chat.name} for {member.name}")
-            except Exception as e:
-                print(f"❌ Error granting temporary access: {e}")
-                await dm_channel.send("❌ There was an error setting up the mute step. Please contact an administrator.")
-                return
-            
-            # Create mute instruction embed
-            channel_name = general_chat.name if general_chat else "general-chat"
-            mute_embed = discord.Embed(
-                title="🔇 MUTE NOTIFICATIONS - REQUIRED STEP",
-                description=f"**You must mute notifications from #{channel_name} to complete registration.**\n\n"
-                          f"**How to mute notifications:**\n\n"
-                          f"**On Mobile:**\n"
-                          f"1. Long-press on #{channel_name}\n"
-                          f"2. Tap **'Mute Channel'**\n"
-                          f"3. Select **'Until I turn it back on'**\n\n"
-                          f"**On Desktop:**\n"
-                          f"1. Right-click on #{channel_name}\n"
-                          f"2. Left-click on **'Mute Channel'**\n"
-                          f"3. Select **'Until I turn it back on'**\n\n"
-                          f"**⚠️ IMPORTANT: You must wait 60 seconds before confirming!**\n"
-                          f"The confirmation button will appear after 60 seconds.\n"
-                          f"This gives you time to actually mute the channel.",
-                color=discord.Color.red()
-            )
-            
-            view = CombinedMuteView(self.user_id, self.child_name, self.role, self.role_display, self.teams_selected)
-            await view.setup_button()  # Setup the disabled button
-            mute_message = await dm_channel.send(embed=mute_embed, view=view)
-            view.message = mute_message  # Store the message reference
-
-            # Start the timer for the button to appear
-            asyncio.create_task(view.start_timer())
-            
-            print(f"👤 {interaction.user.name} moved to combined mute step")
+            await complete_registration(interaction.user, member)
         else:
             await interaction.followup.send("❌ Could not find you in the server. Please try again.", ephemeral=True)
     
@@ -745,7 +565,6 @@ class FinalConfirmationView(discord.ui.View):
 # =============================================================================
 # STEP-SPECIFIC VIEW CLASSES
 # =============================================================================
-
 class NameConfirmationView(discord.ui.View):
     """View for confirming or changing the entered child's name."""
     
@@ -865,7 +684,6 @@ class NameConfirmationView(discord.ui.View):
         }
         return emoji_map.get(role, "👤")
     
-    # In NameConfirmationView class (if it has format_teams_text method):
     def format_teams_text(self, teams_selected: List[str]) -> str:
         """Format teams list for display."""
         if not teams_selected:
@@ -873,9 +691,9 @@ class NameConfirmationView(discord.ui.View):
         
         team_list = []
         if "national" in teams_selected:
-            team_list.append("National Team 🔴")  # Changed from 🇺🇳 to 🔴
+            team_list.append("National Team 🔴")
         if "demonstration" in teams_selected:
-            team_list.append("Demonstration Team 🔵")  # Changed from 🎯 to 🔵
+            team_list.append("Demonstration Team 🔵")
         return ", ".join(team_list)
     
     @discord.ui.button(label="✏️ No, I Need to Fix It", style=discord.ButtonStyle.gray, emoji="✏️", row=1)
@@ -927,7 +745,7 @@ class NameConfirmationView(discord.ui.View):
         print(f"👤 {interaction.user.name} chose to fix the name")
 
 class RoleSelectView(discord.ui.View):
-    """View for selecting family role (mother, father, grandmother, grandfather)."""
+    """View for selecting family role (mother, father, grandmother, grandfather, student)."""
     
     def __init__(self, user_id: int, child_name: str):
         super().__init__(timeout=300)
@@ -949,6 +767,10 @@ class RoleSelectView(discord.ui.View):
     @discord.ui.button(label="👴 Grandfather", style=discord.ButtonStyle.blurple, emoji="👴", row=1)
     async def grandfather_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_role_selection(interaction, "grandfather", "👴 Grandfather")
+    
+    @discord.ui.button(label="🎓 Student", style=discord.ButtonStyle.blurple, emoji="🎓", row=2)
+    async def student_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_role_selection(interaction, "student", "🎓 Student")
     
     async def handle_role_selection(self, interaction: discord.Interaction, role: str, role_display: str) -> None:
         """Process role selection and show confirmation."""
@@ -1110,9 +932,9 @@ class RoleConfirmationView(discord.ui.View):
         
         team_list = []
         if "national" in teams_selected:
-            team_list.append("National Team 🔴")  # Changed from 🇺🇳 to 🔴
+            team_list.append("National Team 🔴")
         if "demonstration" in teams_selected:
-            team_list.append("Demonstration Team 🔵")  # Changed from 🎯 to 🔵
+            team_list.append("Demonstration Team 🔵")
         return ", ".join(team_list)
     
     @discord.ui.button(label="✏️ No, I Need to Fix It", style=discord.ButtonStyle.gray, emoji="✏️", row=1)
@@ -1429,7 +1251,6 @@ class TeamConfirmationView(discord.ui.View):
 # =============================================================================
 # PRIVATE CHANNEL MANAGEMENT CLASSES
 # =============================================================================
-
 class PermanentDeleteChannelView(discord.ui.View):
     """
     Permanent delete button view pinned at top of private chats.
@@ -1578,7 +1399,6 @@ class ConfirmDeleteView(discord.ui.View):
 # =============================================================================
 # PRIVATE CHANNEL FUNCTIONS
 # =============================================================================
-
 async def create_private_channel(guild: discord.Guild, user: discord.Member, original_channel_name: str) -> Optional[discord.TextChannel]:
     """
     Create a private channel for user communication in the existing category.
@@ -1759,18 +1579,9 @@ async def cleanup_user_data(user_id: int) -> None:
 # =============================================================================
 # EVENT HANDLERS
 # =============================================================================
-
 @bot.event
 async def on_ready():
-    """
-    Bot startup initialization and system verification.
-    
-    Performs:
-    - Configuration validation
-    - Channel setup verification
-    - Role consistency checks
-    - Registry validation
-    """
+    """Bot startup initialization and system verification."""
     print(f'✅ {bot.user} is online!')
     print(f'🆔 Bot ID: {bot.user.id}')
     print(f'👥 Connected to {len(bot.guilds)} server(s)')
@@ -1779,8 +1590,8 @@ async def on_ready():
     if guild:
         print(f'🏠 Server: {guild.name} (ID: {guild.id})')
         
-        # Ensure general chat has redirection message
-        await ensure_general_chat_redirect_message(guild)
+        # Only check for existing messages, don't create new ones
+        await ensure_general_chat_mute_message(guild)  # Now just checks, doesn't create
         
         # Verify monitored channels
         print("\n📢 MONITORED CHANNELS (messages will create private chats):")
@@ -1805,6 +1616,20 @@ async def on_ready():
             print(f'   👥 Members with this role: {len(master_lee_family_role.members)}')
         else:
             print(f'⚠️ Master Lee\'s Family role not found! ID: {MASTER_LEE_FAMILY_ROLE_ID}')
+
+       # Verify Student role
+        student_role = guild.get_role(STUDENT_ROLE_ID)
+        if student_role:
+            print(f'🎓 Student Role: {student_role.name} (ID: {student_role.id})')
+        else:
+            print(f'⚠️ Student role not found! ID: {STUDENT_ROLE_ID}')
+
+        # Verify Instructor role
+        instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+        if instructor_role:
+            print(f'👨‍🏫 Instructor Role: {instructor_role.name} (ID: {instructor_role.id})')
+        else:
+            print(f'⚠️ Instructor role not found! ID: {INSTRUCTOR_ROLE_ID}')
         
         # Verify rules channel
         rules_channel = guild.get_channel(RULES_CHANNEL_ID)
@@ -1935,7 +1760,6 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
                             'nickname': member.display_name,
                             'gender': 'unknown',
                             'teams': [],
-                            'notifications_muted': False,
                             'registered_at': discord.utils.utcnow().isoformat(),
                             'auto_added': True
                         }
@@ -2063,6 +1887,46 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
                     await re_add_green_check_reaction(guild, member)
                 else:
                     print(f"ℹ️ User {member.name} is not registered, allowing reaction removal")
+    
+    # Handle mute instruction reaction removal
+    elif payload.channel_id == GENERAL_CHAT_CHANNEL_ID:
+        guild = bot.get_guild(payload.guild_id)
+        if guild:
+            channel = guild.get_channel(payload.channel_id)
+            if channel:
+                try:
+                    message = await channel.fetch_message(payload.message_id)
+                    # Check if this is our mute instruction message
+                    if message.author == bot.user and message.embeds:
+                        for embed in message.embeds:
+                            if embed.title and "How to Access" in embed.title:
+                                # This is the mute instruction message
+                                member = guild.get_member(payload.user_id)
+                                if member and not member.bot:
+                                    # Check if user has Family Member role
+                                    family_role = guild.get_role(FAMILY_ROLE_ID)
+                                    if family_role and family_role in member.roles:
+                                        # User has Family Member role, so they should still have view access
+                                        # Remove send permission but keep view access
+                                        await channel.set_permissions(member, overwrite=None)
+                                        
+                                        # Re-add permissions with send_messages disabled
+                                        await channel.set_permissions(
+                                            member,
+                                            read_messages=True,
+                                            send_messages=False,  # Disable sending
+                                            view_channel=True,
+                                            read_message_history=True,
+                                            reason="User removed mute reaction"
+                                        )
+                                        print(f"❌ Removed send permission from {member.name} for removing mute reaction")
+                                    else:
+                                        # User doesn't have Family Member role, remove all permissions
+                                        await channel.set_permissions(member, overwrite=None)
+                                        print(f"❌ Removed all permissions from {member.name} (no Family Member role)")
+                                break
+                except:
+                    pass
 
 async def re_add_green_check_reaction(guild: discord.Guild, member: discord.Member) -> None:
     """Re-add green check reaction for registered users who removed it."""
@@ -2129,6 +1993,55 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 # Start registration process
                 await log_registration_start(guild, member)
                 await start_dm_process(member)
+    
+    # Check for general chat mute reaction
+    elif payload.channel_id == GENERAL_CHAT_CHANNEL_ID and str(payload.emoji) == '🔇':
+        guild = bot.get_guild(payload.guild_id)
+        if guild:
+            channel = guild.get_channel(payload.channel_id)
+            if channel:
+                try:
+                    message = await channel.fetch_message(payload.message_id)
+                    # Check if this is our mute instruction message
+                    if message.author == bot.user and message.embeds:
+                        for embed in message.embeds:
+                            if embed.title and "How to Access" in embed.title:
+                                # This is the mute instruction message
+                                member = guild.get_member(payload.user_id)
+                                if member and not member.bot:
+                                    # Grant send permission when they react
+                                    # Remove any existing permission override first
+                                    await channel.set_permissions(member, overwrite=None)
+                                    
+                                    # Then add the new permission with send_messages enabled
+                                    await channel.set_permissions(
+                                        member,
+                                        read_messages=True,
+                                        send_messages=True,
+                                        view_channel=True,
+                                        read_message_history=True,
+                                        reason="User reacted to mute instruction"
+                                    )
+                                    print(f"✅ Granted send permission to {member.name} for reacting to mute instruction")
+                                    
+                                    # Send confirmation DM
+                                    try:
+                                        dm_channel = await member.create_dm()
+                                        confirm_embed = discord.Embed(
+                                            title="✅ Access Granted",
+                                            description=f"You now have permission to send messages in <#{GENERAL_CHAT_CHANNEL_ID}>!\n\n"
+                                                    "**Remember:**\n"
+                                                    "• All messages are auto-forwarded to private chats\n"
+                                                    "• Keep conversations respectful\n"
+                                                    "• Enjoy chatting with the community!",
+                                            color=discord.Color.green()
+                                        )
+                                        await dm_channel.send(embed=confirm_embed)
+                                    except:
+                                        pass
+                                break
+                except:
+                    pass
 
 async def handle_master_lee_family_member(member: discord.Member) -> None:
     """Handle Master Lee's Family members (exempt from registration)."""
@@ -2189,6 +2102,32 @@ async def on_message(message: discord.Message):
     
     # Handle monitored channel messages
     if message.channel.id in MONITORED_CHANNELS:
+        # Check if user has permission to send messages
+        if not message.channel.permissions_for(message.author).send_messages:
+            try:
+                await message.delete()
+                print(f'❌ Blocked message from {message.author.name} - no send permission')
+                
+                # Notify user via DM
+                try:
+                    dm_channel = await message.author.create_dm()
+                    embed = discord.Embed(
+                        title="🔒 Permission Required",
+                        description=f"You don't have permission to send messages in <#{GENERAL_CHAT_CHANNEL_ID}> yet!\n\n"
+                                  "**To get access:**\n"
+                                  "1. Mute the channel notifications\n"
+                                  "2. React with 🔇 to the pinned message in that channel\n"
+                                  "3. You'll then be able to send messages\n\n"
+                                  "This helps prevent notification spam for everyone.",
+                        color=discord.Color.red()
+                    )
+                    await dm_channel.send(embed=embed)
+                except:
+                    pass
+            except:
+                pass
+            return
+        
         await handle_monitored_channel_message(message)
         await delete_original_message(message)
     
@@ -2224,7 +2163,6 @@ async def delete_original_message(message: discord.Message) -> None:
 # =============================================================================
 # MESSAGE HANDLING FUNCTIONS
 # =============================================================================
-
 async def handle_monitored_channel_message(message: discord.Message):
     """
     Process messages from monitored channels by creating/using private chats.
@@ -2574,13 +2512,10 @@ async def provide_step_guidance(channel: discord.DMChannel, user_id: int) -> Non
         await channel.send("⚠️ Please use the buttons above to confirm or change your teams.")
     elif state['waiting_for_final_confirmation']:
         await channel.send("⚠️ Please use the buttons above to confirm your registration or make changes.")
-    elif state['waiting_for_mute']:
-        await channel.send("⚠️ Please click the **🔇 MUTE NOTIFICATIONS** button to proceed with registration.")
 
 # =============================================================================
 # REGISTRATION FUNCTIONS
 # =============================================================================
-
 async def assign_family_role(member: discord.Member) -> bool:
     """
     Assign Family Member role to user after registration.
@@ -2600,6 +2535,32 @@ async def assign_family_role(member: discord.Member) -> bool:
         try:
             await member.add_roles(family_role, reason="Registration Complete")
             print(f'✅ Added Family Member role to {member.name} after registration')
+            return True
+        except discord.Forbidden:
+            print(f'❌ Missing permissions to add role to {member.name}')
+        except discord.HTTPException as e:
+            print(f'❌ Error adding role to {member.name}: {e}')
+    return False
+
+async def assign_student_role(member: discord.Member) -> bool:
+    """
+    Assign Student role to user after registration.
+    
+    Args:
+        member: Discord member to assign role to
+        
+    Returns:
+        True if role assigned successfully, False otherwise
+    """
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return False
+    
+    student_role = guild.get_role(STUDENT_ROLE_ID)
+    if student_role and student_role not in member.roles:
+        try:
+            await member.add_roles(student_role, reason="Registration Complete")
+            print(f'✅ Added Student role to {member.name} after registration')
             return True
         except discord.Forbidden:
             print(f'❌ Missing permissions to add role to {member.name}')
@@ -2710,8 +2671,6 @@ async def start_dm_process(member: discord.Member):
             'waiting_for_teams': False,
             'waiting_for_teams_confirmation': False,
             'waiting_for_final_confirmation': False,
-            'waiting_for_mute': False,
-            'notifications_muted': False,
             'child_name': None,
             'child_name_original': None,
             'child_name_cleaned': None,
@@ -2733,14 +2692,6 @@ async def start_dm_process(member: discord.Member):
 async def complete_registration(user: discord.User, member: discord.Member):
     """
     Finalize registration process with comprehensive completion steps.
-    
-    Performs:
-    - Nickname assignment
-    - Role assignments
-    - Team assignments
-    - Notification status handling
-    - Data persistence
-    - Cleanup
     """
     user_id = user.id
     
@@ -2752,7 +2703,6 @@ async def complete_registration(user: discord.User, member: discord.Member):
     gender = user_states[user_id]['gender']
     role_display = user_states[user_id]['role_display']
     teams_selected = user_states[user_id]['teams_selected']
-    notifications_muted = user_states[user_id].get('notifications_muted', False)
     
     # Generate nickname based on role
     nickname, role_name, emoji_role = generate_nickname_and_role(child_name, gender)
@@ -2762,34 +2712,80 @@ async def complete_registration(user: discord.User, member: discord.Member):
     # Attempt nickname assignment
     nickname_success, success_msg = await attempt_nickname_assignment(member, nickname)
     
-    # Assign family role
-    family_role_assigned = await assign_family_role(member)
+    # Assign appropriate role based on registration type
+    if gender == 'student':
+        # Assign Student role (same permissions as Family Member)
+        role_assigned = await assign_student_role(member)
+        role_type = "Student"
+    else:
+        # Assign Family Member role for parents/grandparents
+        role_assigned = await assign_family_role(member)
+        role_type = "Family Member"
     
-    # Assign team roles
+    # Grant access to general-chat if role assigned successfully
+    if role_assigned:
+        await grant_general_chat_access(member)
+    
+    # Assign team roles (if any selected)
     assigned_teams = await assign_team_roles(member, teams_selected)
     
     # Prepare completion message components
     team_message = format_team_message(teams_selected)
-    role_msg = format_role_assignment_message(family_role_assigned, assigned_teams)
-    notification_msg = format_notification_message(notifications_muted)
+    role_msg = format_role_assignment_message(role_type, role_assigned, assigned_teams)
     
     # Send completion message
     await send_registration_completion_message(
         dm_channel, emoji_role, role_display, child_name, 
-        success_msg, role_msg, team_message, notification_msg
+        success_msg, role_msg, team_message, gender
     )
     
     # Save registration data
     save_registration_data(user_id, child_name, role_name, role_display, 
-                          nickname, gender, teams_selected, notifications_muted)
+                          nickname, gender, teams_selected)
     
     # Log successful registration
-    await log_successful_registration(member, child_name, nickname, teams_selected, notifications_muted)
+    await log_successful_registration(member, child_name, nickname, teams_selected, gender)
     
     # Clean up temporary state
     del user_states[user_id]
     
-    print(f"✅ Registration complete for {user.name} with teams: {teams_selected}")
+    print(f"✅ Registration complete for {user.name} as {gender} with teams: {teams_selected}")
+    
+async def grant_general_chat_access(member: discord.Member) -> bool:
+    """
+    Grant access to #general-chat channel after registration.
+    
+    Args:
+        member: The member to grant access to
+        
+    Returns:
+        True if access granted successfully, False otherwise
+    """
+    guild = member.guild
+    general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
+    
+    if not general_chat:
+        print(f"❌ General chat channel not found (ID: {GENERAL_CHAT_CHANNEL_ID})")
+        return False
+    
+    try:
+        # Grant view and read access to #general-chat
+        await general_chat.set_permissions(
+            member,
+            read_messages=True,
+            view_channel=True,
+            read_message_history=True,
+            reason="Granted after DM registration completion"
+        )
+        
+        return True
+        
+    except discord.Forbidden:
+        print(f"❌ No permission to modify #general-chat permissions for {member.name}")
+        return False
+    except Exception as e:
+        print(f"❌ Error granting #general-chat access to {member.name}: {e}")
+        return False
 
 def generate_nickname_and_role(child_name: str, gender: str) -> Tuple[str, str, str]:
     """Generate nickname, role name, and emoji based on gender."""
@@ -2799,8 +2795,13 @@ def generate_nickname_and_role(child_name: str, gender: str) -> Tuple[str, str, 
         return f"{child_name}'s Father", "Father", "👨"
     elif gender == 'grandmother':
         return f"{child_name}'s Grandmother", "Grandmother", "👵"
-    else:  # grandfather
+    elif gender == 'grandfather':
         return f"{child_name}'s Grandfather", "Grandfather", "👴"
+    elif gender == 'student':
+        # For student, just use their name as nickname (no "Student" suffix)
+        return child_name, "Student", "🎓"
+    else:
+        return child_name, "Unknown", "👤"
 
 async def attempt_nickname_assignment(member: discord.Member, nickname: str) -> Tuple[bool, str]:
     """Attempt to assign nickname to member with error handling."""
@@ -2831,19 +2832,19 @@ def format_team_message(teams_selected: List[str]) -> str:
     
     team_list = []
     if "national" in teams_selected:
-        team_list.append("**National Team** 🔴")  # Changed from 🇺🇳 to 🔴
+        team_list.append("**National Team** 🔴")
     if "demonstration" in teams_selected:
-        team_list.append("**Demonstration Team** 🔵")  # Changed from 🎯 to 🔵
+        team_list.append("**Demonstration Team** 🔵")
     
     return f"\n\n**Teams Joined:**\n" + "\n".join([f"• {team}" for team in team_list])
 
-def format_role_assignment_message(family_role_assigned: bool, assigned_teams: List[str]) -> str:
+def format_role_assignment_message(role_type: str, role_assigned: bool, assigned_teams: List[str]) -> str:
     """Format role assignment results message."""
     role_msg = ""
-    if family_role_assigned:
-        role_msg += "✅ You have been given the **Family Member** role!\n"
+    if role_assigned:
+        role_msg += f"✅ You have been given the **{role_type}** role!\n"
     else:
-        role_msg += "⚠️ Could not assign Family Member role. Please contact an administrator.\n"
+        role_msg += f"⚠️ Could not assign {role_type} role. Please contact an administrator.\n"
     
     if assigned_teams:
         role_msg += f"✅ Added to {len(assigned_teams)} team(s): {', '.join(assigned_teams)}"
@@ -2852,23 +2853,7 @@ def format_role_assignment_message(family_role_assigned: bool, assigned_teams: L
     
     return role_msg
 
-def format_notification_message(notifications_muted: bool) -> str:
-    """Format notification status message."""
-    if notifications_muted:
-        return (
-            f"🔇 **Notifications for #general-chat have been muted**\n"
-            f"• You can still SEND messages in the channel\n"
-            f"• You just won't get pinged for every message\n"
-            f"• This prevents notification spam\n\n"
-        )
-    else:
-        return (
-            f"⚠️ **Please remember to mute notifications for #general-chat**\n"
-            f"• Right-click the channel → 'Notification Settings' → 'Mute channel'\n"
-            f"• This prevents notification spam from others\n"
-            f"• You can still send messages in the channel\n\n"
-        )
-
+# In the send_registration_completion_message function, update the description:
 async def send_registration_completion_message(
     dm_channel: discord.DMChannel, 
     emoji_role: str, 
@@ -2877,16 +2862,28 @@ async def send_registration_completion_message(
     success_msg: str,
     role_msg: str,
     team_message: str,
-    notification_msg: str
+    gender: str
 ) -> None:
     """Send final registration completion message to user."""
+    
+    if gender == 'student':
+        description = f"{emoji_role} You are now registered as **{role_display}**!\n\n"
+    else:
+        description = f"{emoji_role} You are now registered as **{role_display}** of **{child_name}**!\n\n"
+    
+    description += f"{success_msg}\n\n"
+    description += f"{role_msg}{team_message}\n\n"
+    description += f"**🎊 What's Next:**\n"
+    description += f"• You can now see **#general-chat**!\n"
+    description += f"• Check the pinned message in #general-chat for instructions on how to:\n"
+    description += f"  1. Mute the channel (recommended)\n"
+    description += f"  2. Get permission to send messages\n"
+    description += f"  3. Understand how the chat works\n\n"
+    description += f"Welcome to the family!"
+    
     embed = discord.Embed(
         title="🎉 Registration Complete!",
-        description=f"{emoji_role} You are now registered as **{role_display}** of **{child_name}**!\n\n"
-                  f"{success_msg}\n\n"
-                  f"{role_msg}{team_message}\n\n"
-                  f"{notification_msg}"
-                  f"Welcome to the family!",
+        description=description,
         color=discord.Color.gold()
     )
     await dm_channel.send(embed=embed)
@@ -2898,8 +2895,7 @@ def save_registration_data(
     role_display: str,
     nickname: str,
     gender: str,
-    teams_selected: List[str],
-    notifications_muted: bool
+    teams_selected: List[str]
 ) -> None:
     """Save registration data to persistent storage."""
     registered_users[str(user_id)] = {
@@ -2909,7 +2905,6 @@ def save_registration_data(
         'nickname': nickname,
         'gender': gender,
         'teams': teams_selected,
-        'notifications_muted': notifications_muted,
         'registered_at': discord.utils.utcnow().isoformat()
     }
     save_registered_users(registered_users)
@@ -2919,32 +2914,33 @@ async def log_successful_registration(
     child_name: str,
     nickname: str,
     teams_selected: List[str],
-    notifications_muted: bool
+    gender: str
 ) -> None:
     """Log successful registration to log channel."""
     guild = bot.get_guild(GUILD_ID)
     if guild:
-        family_role = guild.get_role(FAMILY_ROLE_ID)
-        family_role_name = family_role.name if family_role else "Family Member"
+        if gender == 'student':
+            role_name = "Student"
+        else:
+            family_role = guild.get_role(FAMILY_ROLE_ID)
+            role_name = family_role.name if family_role else "Family Member"
         
         log_embed = discord.Embed(
             title="✅ Registration Complete",
             description=f"**User:** {member.mention} ({member.id})\n"
                       f"**Child's Name:** {child_name}\n"
-                      f"**Role:** {family_role_name}\n"
+                      f"**Role:** {role_name}\n"
                       f"**Nickname:** {nickname}\n"
                       f"**Teams:** {', '.join(teams_selected) if teams_selected else 'None'}\n"
-                      f"**Notifications Muted:** {'✅ Yes' if notifications_muted else '❌ No'}\n"
                       f"**Registered:** <t:{int(time.time())}:R>",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc)
-    )
+        )
         await send_to_log_channel(guild, "", log_embed)
 
 # =============================================================================
 # COMMAND DEFINITIONS
 # =============================================================================
-
 # Bot command group for administrative functions
 @bot.group(name="bot_command", invoke_without_command=True)
 async def bot_command(ctx):
@@ -2991,10 +2987,59 @@ async def chat_command(ctx):
     )
     await ctx.send(embed=embed)
 
+@bot_command.command(name="assign_instructor")
+@bot_channel_only()
+async def chat_assign_instructor(ctx, member: discord.Member):
+    """Manually assign Instructor role to a user."""
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    
+    if not instructor_role:
+        await ctx.send("❌ Instructor role not found!", ephemeral=True)
+        return
+    
+    try:
+        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
+        
+        # Also give them access to all channels that Master Lee's Family has
+        master_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        
+        # Copy permissions from Master Lee's Family role to Instructor role
+        for channel in guild.channels:
+            # Check if Master Lee's Family has permissions in this channel
+            master_overwrite = channel.overwrites_for(master_role) if master_role else None
+            
+            if master_overwrite and any([
+                master_overwrite.read_messages,
+                master_overwrite.send_messages,
+                master_overwrite.view_channel
+            ]):
+                # Apply same permissions to Instructor
+                await channel.set_permissions(
+                    instructor_role,
+                    overwrite=master_overwrite,
+                    reason="Instructor permissions set to match Master Lee's Family"
+                )
+        
+        await ctx.send(f"✅ Assigned Instructor role to {member.mention} and copied Master Lee's Family permissions")
+        
+        # Log the assignment
+        embed = discord.Embed(
+            title="👨‍🏫 Instructor Role Assigned",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Assigned by:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.gold(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error assigning Instructor role: {e}", ephemeral=True)
+
 # =============================================================================
 # ADMINISTRATIVE COMMANDS (BOT CHANNEL ONLY)
 # =============================================================================
-
 @bot_command.command(name="active_private_chats")
 @bot_channel_only()
 async def chat_active_private_chats(ctx):
@@ -3038,13 +3083,6 @@ async def chat_active_private_chats(ctx):
             )
     
     await ctx.send(embed=embed)
-
-@bot_command.command(name="fix_redirect_message")
-@bot_channel_only()
-async def chat_fix_redirect_message(ctx):
-    """Manually ensure the general-chat redirection message is present and pinned."""
-    await ensure_general_chat_redirect_message(ctx.guild)
-    await ctx.send("✅ Checked/created redirection message in general-chat", ephemeral=True)
 
 @bot_command.command(name="cleanup_private_chats")
 @bot_channel_only()
@@ -3354,7 +3392,6 @@ async def chat_register_stats(ctx):
     demonstration_count = 0
     both_teams_count = 0
     no_teams_count = 0
-    notifications_muted_count = 0
     
     for user_data in registered_users.values():
         teams = user_data.get('teams', [])
@@ -3366,9 +3403,6 @@ async def chat_register_stats(ctx):
             demonstration_count += 1
         else:
             no_teams_count += 1
-        
-        if user_data.get('notifications_muted', False):
-            notifications_muted_count += 1
     
     embed = discord.Embed(
         title="📊 Registration Statistics",
@@ -3376,11 +3410,10 @@ async def chat_register_stats(ctx):
         color=discord.Color.green()
     )
     
-    embed.add_field(name="🔴 National Team", value=f"{national_count} members", inline=True)  # Changed from 🇺🇳 to 🔴
-    embed.add_field(name="🔵 Demonstration Team", value=f"{demonstration_count} members", inline=True)  # Changed from 🎯 to 🔵
+    embed.add_field(name="🔴 National Team", value=f"{national_count} members", inline=True)
+    embed.add_field(name="🔵 Demonstration Team", value=f"{demonstration_count} members", inline=True)
     embed.add_field(name="🏆 Both Teams", value=f"{both_teams_count} members", inline=True)
     embed.add_field(name="👪 No Teams", value=f"{no_teams_count} members", inline=True)
-    embed.add_field(name="🔇 Notifications Muted", value=f"{notifications_muted_count} members", inline=True)
     
     await ctx.send(embed=embed)
 
@@ -3451,7 +3484,6 @@ async def chat_view_user(ctx, member: discord.Member):
     else:
         embed.add_field(name="Teams", value="None", inline=True)
     
-    embed.add_field(name="General Chat Muted", value="✅ Yes" if user_data.get('general_chat_muted', False) else "❌ No", inline=True)
     embed.add_field(name="Registered At", value=user_data['registered_at'], inline=False)
     embed.add_field(name="User ID", value=user_id, inline=True)
     
@@ -3577,7 +3609,6 @@ async def chat_check_consistency(ctx):
                             'nickname': member.display_name,
                             'gender': 'unknown',
                             'teams': [],
-                            'general_chat_muted': False,
                             'registered_at': discord.utils.utcnow().isoformat(),
                             'auto_added': True
                         }
@@ -3663,7 +3694,6 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
 # =============================================================================
 # SETUP COMMANDS
 # =============================================================================
-
 @bot_command.command(name="setup")
 @bot_channel_only()
 async def chat_setup(ctx):
@@ -3838,6 +3868,49 @@ async def setup_log_channel_command(ctx):
         await ctx.send(f"❌ Error creating log channel: {e}")
 
 # =============================================================================
+# GENERAL CHAT COMMANDS
+# =============================================================================
+@bot_command.command(name="reset_general_permissions")
+@bot_channel_only()
+async def chat_reset_general_permissions(ctx):
+    """Reset all permissions for general-chat channel to default."""
+    guild = ctx.guild
+    general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
+    
+    if not general_chat:
+        await ctx.send("❌ General chat channel not found", ephemeral=True)
+        return
+    
+    try:
+        # Reset permissions for @everyone
+        await general_chat.set_permissions(
+            guild.default_role,
+            read_messages=True,
+            send_messages=False,
+            read_message_history=True,
+            reason="Reset to default permissions"
+        )
+        
+        # Reset permissions for family role
+        family_role = guild.get_role(FAMILY_ROLE_ID)
+        if family_role:
+            await general_chat.set_permissions(
+                family_role,
+                send_messages=False,
+                reason="Reset family role permissions"
+            )
+        
+        # Clear all user-specific permissions
+        for overwrite in general_chat.overwrites:
+            if isinstance(overwrite, discord.Member):
+                await general_chat.set_permissions(overwrite, overwrite=None, reason="Clear user permissions")
+        
+        await ctx.send("✅ Reset all permissions for general-chat channel", ephemeral=True)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error resetting permissions: {e}", ephemeral=True)
+
+# =============================================================================
 # PRIVATE CHAT COMMANDS (NOT RESTRICTED TO BOT CHANNEL)
 # =============================================================================
 
@@ -3928,7 +4001,7 @@ if __name__ == "__main__":
         print("❌ ERROR: Bot token not found in config.txt")
         print("   Please add: TOKEN=your_bot_token_here")
         exit(1) 
-    
+
     if not ADMIN_USER_ID:
         print("⚠️ WARNING: ADMIN_USER_ID not set in config.txt")
         print("   Chat forwarding will not work without this!")
