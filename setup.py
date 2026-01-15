@@ -941,7 +941,7 @@ async def setup_server(ctx):
             # 4. 📢 ANNOUNCEMENTS Category
             # a) general-announcement (public - Family Member role only, read-only)
             general_announcement = await announcements_category.create_text_channel(
-                name="general-announcement",
+                name="general-announcements",
                 topic="General announcements for all family members - Family Members: read-only",
                 reason="General announcements channel"
             )
@@ -977,7 +977,7 @@ async def setup_server(ctx):
             
             # b) demonstration-team (private - Demonstration Team role only, read-only)
             demonstration_team_channel = await announcements_category.create_text_channel(
-                name="demonstration-team",
+                name="demonstration-team-announcements",
                 topic="Demonstration team announcements and updates - Demonstration Team: read-only",
                 reason="Demonstration team announcements"
             )
@@ -1015,7 +1015,7 @@ async def setup_server(ctx):
             
             # c) national-team (private - National Team role only, read-only)
             national_team_channel = await announcements_category.create_text_channel(
-                name="national-team",
+                name="national-team-announcements",
                 topic="National team announcements and updates - National Team: read-only",
                 reason="National team announcements"
             )

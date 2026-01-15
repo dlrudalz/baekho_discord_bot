@@ -1266,11 +1266,14 @@ class PermanentDeleteChannelView(discord.ui.View):
     
     @discord.ui.button(label="🗑️ Delete Private Chat", style=discord.ButtonStyle.danger, custom_id="delete_private_channel")
     async def delete_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle delete channel request - admin only."""
-        # Admin authorization check
-        if interaction.user.id != ADMIN_USER_ID:
+        """Handle delete channel request - admin and Master Lee's Family only."""
+        # Authorization check
+        master_lee_family_role = interaction.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        is_master_lee_family = master_lee_family_role and master_lee_family_role in interaction.user.roles
+        
+        if interaction.user.id != ADMIN_USER_ID and not is_master_lee_family:
             await interaction.response.send_message(
-                "❌ Only the admin can delete this private chat channel.",
+                "❌ Only admin and Master Lee's Family role members can delete this private chat channel.",
                 ephemeral=True
             )
             return
@@ -1287,9 +1290,9 @@ class PermanentDeleteChannelView(discord.ui.View):
         embed = discord.Embed(
             title="🗑️ Confirm Channel Deletion",
             description=f"Are you sure you want to delete this private chat with {user.mention if user else 'Unknown User'}?\n\n"
-                       f"**Channel:** #{channel.name}\n"
-                       f"**User:** {user.mention if user else 'Unknown'} ({self.user_id})\n\n"
-                       f"**This action cannot be undone!** All messages will be permanently deleted.",
+                    f"**Channel:** #{channel.name}\n"
+                    f"**User:** {user.mention if user else 'Unknown'} ({self.user_id})\n\n"
+                    f"**This action cannot be undone!** All messages will be permanently deleted.",
             color=discord.Color.red()
         )
         
@@ -1297,7 +1300,7 @@ class PermanentDeleteChannelView(discord.ui.View):
         view = ConfirmDeleteView(channel.id, self.user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
-        print(f"🔄 Admin requested deletion for channel #{channel.name}")
+        print(f"🔄 {'Admin' if interaction.user.id == ADMIN_USER_ID else 'Master Lee Family member'} requested deletion for channel #{channel.name}")
 
 class ConfirmDeleteView(discord.ui.View):
     """Confirmation view for channel deletion with timeout protection."""
@@ -1311,11 +1314,14 @@ class ConfirmDeleteView(discord.ui.View):
     @discord.ui.button(label="✅ Confirm Delete", style=discord.ButtonStyle.danger)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Confirm and execute channel deletion."""
-        if interaction.user.id != ADMIN_USER_ID:
+        master_lee_family_role = interaction.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        is_master_lee_family = master_lee_family_role and master_lee_family_role in interaction.user.roles
+        
+        if interaction.user.id != ADMIN_USER_ID and not is_master_lee_family:
             # Try to notify via DM since channel might be deleted
             try:
                 admin_dm = await interaction.user.create_dm()
-                await admin_dm.send("❌ Only admin can delete this channel.")
+                await admin_dm.send("❌ Only admin and Master Lee's Family can delete this channel.")
             except:
                 pass
             return
@@ -1348,7 +1354,7 @@ class ConfirmDeleteView(discord.ui.View):
             await asyncio.sleep(0.5)
             
             # Delete the channel
-            await channel.delete(reason="Private chat deleted by admin")
+            await channel.delete(reason=f"Private chat deleted by {'admin' if interaction.user.id == ADMIN_USER_ID else 'Master Lee Family member'}")
             
             # Clean up tracking data
             if self.channel_id in private_channels:
@@ -1360,14 +1366,14 @@ class ConfirmDeleteView(discord.ui.View):
             embed = discord.Embed(
                 title="🗑️ Private Chat Deleted",
                 description=f"**Channel:** #{channel_name}\n"
-                          f"**User:** {user.mention if user else 'Unknown'} ({self.user_id})\n"
-                          f"**By:** {interaction.user.mention}",
+                        f"**User:** {user.mention if user else 'Unknown'} ({self.user_id})\n"
+                        f"**By:** {interaction.user.mention} ({'Admin' if interaction.user.id == ADMIN_USER_ID else 'Master Lee Family'})",
                 color=discord.Color.green(),
                 timestamp=datetime.now(timezone.utc)
             )
             await send_to_log_channel(interaction.guild, "", embed)
             
-            print(f"🗑️ Private channel deleted by admin for user: {user.name if user else 'Unknown'}")
+            print(f"🗑️ Private channel deleted by {'admin' if interaction.user.id == ADMIN_USER_ID else 'Master Lee Family member'} for user: {user.name if user else 'Unknown'}")
             
         except Exception as e:
             print(f"❌ Error in confirm_button: {e}")
@@ -1383,19 +1389,21 @@ class ConfirmDeleteView(discord.ui.View):
                     )
                 except:
                     print(f"❌ Could not send error message to user: {e}")
-    
+
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel the deletion operation."""
-        if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
+        master_lee_family_role = interaction.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        is_master_lee_family = master_lee_family_role and master_lee_family_role in interaction.user.roles
+        
+        if interaction.user.id != ADMIN_USER_ID and not is_master_lee_family:
+            await interaction.response.send_message("❌ Only admin and Master Lee's Family can cancel this action.", ephemeral=True)
             return
         
         self.confirmed = False
         self.stop()
         
         await interaction.response.edit_message(content="✅ Deletion cancelled.", embed=None, view=None)
-
 # =============================================================================
 # PRIVATE CHANNEL FUNCTIONS
 # =============================================================================
@@ -1437,7 +1445,7 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
             print(f"❌ Private conversation category not found with ID: {PRIVATE_CONVERSATION_CATEGORY_ID}")
             print("   Please ensure setup program has run and category exists")
             return None
-        
+                
         # Configure channel permissions
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False, read_message_history=False),
@@ -1465,6 +1473,20 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
                 manage_permissions=True
             )
         }
+
+        # Add Master Lee's Family role with FULL permissions (including delete)
+        master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        if master_lee_family_role:
+            overwrites[master_lee_family_role] = discord.PermissionOverwrite(
+                read_messages=True, 
+                send_messages=True, 
+                read_message_history=True,
+                manage_channels=True,
+                manage_messages=True,
+                manage_permissions=True,
+                attach_files=True,
+                embed_links=True
+            )
         
         # Create sanitized channel name
         channel_name = f"private-{user.display_name.lower().replace(' ', '-')[:20]}"
@@ -2993,55 +3015,6 @@ async def chat_command(ctx):
     )
     await ctx.send(embed=embed)
 
-@bot_command.command(name="assign_instructor")
-@bot_channel_only()
-async def chat_assign_instructor(ctx, member: discord.Member):
-    """Manually assign Instructor role to a user."""
-    guild = ctx.guild
-    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
-    
-    if not instructor_role:
-        await ctx.send("❌ Instructor role not found!", ephemeral=True)
-        return
-    
-    try:
-        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
-        
-        # Also give them access to all channels that Master Lee's Family has
-        master_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-        
-        # Copy permissions from Master Lee's Family role to Instructor role
-        for channel in guild.channels:
-            # Check if Master Lee's Family has permissions in this channel
-            master_overwrite = channel.overwrites_for(master_role) if master_role else None
-            
-            if master_overwrite and any([
-                master_overwrite.read_messages,
-                master_overwrite.send_messages,
-                master_overwrite.view_channel
-            ]):
-                # Apply same permissions to Instructor
-                await channel.set_permissions(
-                    instructor_role,
-                    overwrite=master_overwrite,
-                    reason="Instructor permissions set to match Master Lee's Family"
-                )
-        
-        await ctx.send(f"✅ Assigned Instructor role to {member.mention} and copied Master Lee's Family permissions")
-        
-        # Log the assignment
-        embed = discord.Embed(
-            title="👨‍🏫 Instructor Role Assigned",
-            description=f"**User:** {member.mention} ({member.id})\n"
-                      f"**Assigned by:** {ctx.author.mention}\n"
-                      f"**Time:** <t:{int(time.time())}:R>",
-            color=discord.Color.gold(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        await send_to_log_channel(guild, "", embed)
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error assigning Instructor role: {e}", ephemeral=True)
 
 # =============================================================================
 # ADMINISTRATIVE COMMANDS (BOT CHANNEL ONLY)
