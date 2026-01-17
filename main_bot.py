@@ -267,10 +267,9 @@ def validate_name_format(name: str) -> Tuple[bool, str]:
 # =============================================================================
 # LOGGING SYSTEM
 # =============================================================================
-
 async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord.Embed = None) -> bool:
     """
-    Send notification to configured log channel with fallback to admin DM.
+    Send notification to configured log channel ONLY.
     
     Args:
         guild: Discord guild object
@@ -278,7 +277,7 @@ async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord
         embed: Optional embed to send
         
     Returns:
-        True if sent to log channel, False if sent to admin DM
+        True if sent to log channel, False if failed
     """
     if LOG_CHANNEL_ID:
         try:
@@ -291,23 +290,14 @@ async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord
                 return True
             else:
                 print(f"⚠️ Log channel not found: {LOG_CHANNEL_ID}")
+                # Don't fallback to admin DM
         except Exception as e:
             print(f"❌ Error sending to log channel: {e}")
-    
-    # Fallback: Send to admin DM if log channel fails
-    try:
-        admin_user = guild.get_member(ADMIN_USER_ID)
-        if admin_user:
-            admin_dm = await admin_user.create_dm()
-            if embed:
-                await admin_dm.send(embed=embed)
-            else:
-                await admin_dm.send(message)
-    except Exception as e:
-        print(f"❌ Error sending to admin DM: {e}")
+            # Don't fallback to admin DM
+    else:
+        print(f"⚠️ LOG_CHANNEL_ID not configured in config.txt")
     
     return False
-
 # =============================================================================
 # GENERAL CHAT MUTE SYSTEM
 # =============================================================================
@@ -1378,17 +1368,24 @@ class ConfirmDeleteView(discord.ui.View):
         except Exception as e:
             print(f"❌ Error in confirm_button: {e}")
             
-            # Error handling with fallback notification methods
+            # Only log to log channel, no DM fallback
+            error_embed = discord.Embed(
+                title="❌ Error Deleting Channel",
+                description=f"**Error:** {str(e)[:1000]}\n"
+                        f"**Channel ID:** {self.channel_id}\n"
+                        f"**User:** {interaction.user.mention}",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            await send_to_log_channel(interaction.guild, "", error_embed)
+            
+            # Try to update the interaction response if possible
             try:
-                admin_dm = await interaction.user.create_dm()
-                await admin_dm.send(f"❌ Error deleting channel: {e}")
+                await interaction.edit_original_response(
+                    content=f"❌ Error deleting channel: {e}"
+                )
             except:
-                try:
-                    await interaction.edit_original_response(
-                        content=f"❌ Error deleting channel: {e}"
-                    )
-                except:
-                    print(f"❌ Could not send error message to user: {e}")
+                pass
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2462,8 +2459,26 @@ async def forward_user_response_to_admin(admin_user: discord.User, user_message:
         
     except discord.Forbidden:
         print(f'❌ Cannot send DM to admin!')
+        # Log this error to log channel
+        error_embed = discord.Embed(
+            title="❌ Cannot Send DM to Admin",
+            description=f"**User:** {user_message.author.mention}\n"
+                    f"**Message:** {user_message.content[:200]}",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(admin_user.guild, "", error_embed)
     except Exception as e:
         print(f"❌ Error forwarding user response: {e}")
+        # Log this error to log channel
+        error_embed = discord.Embed(
+            title="❌ Error Forwarding User Response",
+            description=f"**User:** {user_message.author.mention}\n"
+                    f"**Error:** {str(e)[:1000]}",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(user_message.guild, "", error_embed)
 
 async def handle_registration_dm(message: discord.Message):
     """
