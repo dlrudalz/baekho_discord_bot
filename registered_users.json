@@ -448,5 +448,37 @@
       "demonstration"
     ],
     "registered_at": "2026-01-17T00:36:31.093357+00:00"
+  },
+  "1461208838333268089": {
+    "child_name": "Lidet Tafere",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Lidet Tafere's Mother",
+    "gender": "mother",
+    "teams": [],
+    "registered_at": "2026-01-17T15:49:25.106142+00:00"
+  },
+  "1462121248673759234": {
+    "child_name": "Pradhyun Madi",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Pradhyun Madi's Mother",
+    "gender": "mother",
+    "teams": [
+      "national"
+    ],
+    "registered_at": "2026-01-17T16:33:29.124884+00:00"
+  },
+  "1246314763039019029": {
+    "child_name": "Jaime Basuil",
+    "role": "Student",
+    "role_display": "\ud83c\udf93 Student",
+    "nickname": "Jaime Basuil",
+    "gender": "student",
+    "teams": [
+      "demonstration",
+      "national"
+    ],
+    "registered_at": "2026-01-17T18:02:27.019660+00:00"
   }
 }
