@@ -5,8 +5,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Eric Le's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-14T23:28:05.971629+00:00"
+    "registered_at": "2026-01-14T23:28:05.971629+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1385354638752223355": {
     "child_name": "Jacob Romero",
@@ -14,8 +19,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Jacob Romero's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-14T23:40:21.943094+00:00"
+    "registered_at": "2026-01-14T23:40:21.943094+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "756258340862033980": {
     "child_name": "Savannah Brewer",
@@ -23,8 +33,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Savannah Brewer's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-14T23:51:38.024527+00:00"
+    "registered_at": "2026-01-14T23:51:38.024527+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461146483280576540": {
     "child_name": "Ryan Peer",
@@ -32,8 +47,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Ryan Peer's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-14T23:58:49.169055+00:00"
+    "registered_at": "2026-01-14T23:58:49.169055+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "942838698989469697": {
     "child_name": "Rhett Brown",
@@ -41,8 +61,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Rhett Brown's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-14T23:59:17.927642+00:00"
+    "registered_at": "2026-01-14T23:59:17.927642+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461148435381223688": {
     "child_name": "Jayden Griffin",
@@ -50,8 +75,13 @@
     "role_display": "\ud83d\udc75 Grandmother",
     "nickname": "Jayden Griffin's Grandmother",
     "gender": "grandmother",
-    "teams": [],
-    "registered_at": "2026-01-15T00:07:10.439150+00:00"
+    "registered_at": "2026-01-15T00:07:10.439150+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461147546247364669": {
     "child_name": "Rebel Redmon",
@@ -59,8 +89,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Rebel Redmon's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T00:23:44.664494+00:00"
+    "registered_at": "2026-01-15T00:23:44.664494+00:00",
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1462943340604686580,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "744573058676686909": {
     "child_name": "Sammy McNeely",
@@ -68,8 +103,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Sammy McNeely's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T22:38:57.793098+00:00"
+    "registered_at": "2026-01-15T22:38:57.793098+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461493034930933896": {
     "child_name": "Liam Renshaw",
@@ -77,8 +117,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Liam Renshaw's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T22:57:02.894140+00:00"
+    "registered_at": "2026-01-15T22:57:02.894140+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461493202464018477": {
     "child_name": "Charit Mallampally",
@@ -86,8 +131,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Charit Mallampally's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T22:59:33.514802+00:00"
+    "registered_at": "2026-01-15T22:59:33.514802+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461492604087566412": {
     "child_name": "Natan Alemneh",
@@ -95,8 +145,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Natan Alemneh's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T22:59:42.788294+00:00"
+    "registered_at": "2026-01-15T22:59:42.788294+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461495445636382966": {
     "child_name": "Meklit Getahun",
@@ -104,8 +159,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Meklit Getahun's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:04:52.878170+00:00"
+    "registered_at": "2026-01-15T23:04:52.878170+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1012396164492054549": {
     "child_name": "Hai Nguyen",
@@ -113,8 +173,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Hai Nguyen's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:08:49.359260+00:00"
+    "registered_at": "2026-01-15T23:08:49.359260+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461497578389508157": {
     "child_name": "Issachar Williams",
@@ -122,8 +187,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Issachar Williams's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:12:45.107269+00:00"
+    "registered_at": "2026-01-15T23:12:45.107269+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "727139417772523542": {
     "child_name": "Kerringtin Thompson",
@@ -131,8 +201,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Kerringtin Thompson's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:15:55.203234+00:00"
+    "registered_at": "2026-01-15T23:15:55.203234+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461499488643579975": {
     "child_name": "Eileen Lopez",
@@ -140,8 +215,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Eileen Lopez's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:20:04.800494+00:00"
+    "registered_at": "2026-01-15T23:20:04.800494+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461499392375652416": {
     "child_name": "Eileen Lopez",
@@ -149,8 +229,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Eileen Lopez's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:22:04.879099+00:00"
+    "registered_at": "2026-01-15T23:22:04.879099+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461498771576983688": {
     "child_name": "Cole Dugger",
@@ -158,8 +243,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Cole Dugger's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:22:52.852233+00:00"
+    "registered_at": "2026-01-15T23:22:52.852233+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461502199904338055": {
     "child_name": "Benjamin Shouse",
@@ -167,8 +257,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Benjamin Shouse's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:33:19.024014+00:00"
+    "registered_at": "2026-01-15T23:33:19.024014+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461502397506654272": {
     "child_name": "Ivette Leon",
@@ -176,8 +271,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Ivette Leon's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:33:20.367261+00:00"
+    "registered_at": "2026-01-15T23:33:20.367261+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461504781867815058": {
     "child_name": "Ariz Sarker",
@@ -185,8 +285,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Ariz Sarker's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:40:33.196971+00:00"
+    "registered_at": "2026-01-15T23:40:33.196971+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461504863904202798": {
     "child_name": "Nicodemos Andualem",
@@ -194,8 +299,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Nicodemos Andualem's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:41:45.509180+00:00"
+    "registered_at": "2026-01-15T23:41:45.509180+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461506664325976323": {
     "child_name": "Nigel Garces",
@@ -203,8 +313,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Nigel Garces's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-15T23:49:54.711213+00:00"
+    "registered_at": "2026-01-15T23:49:54.711213+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461508220194525400": {
     "child_name": "Micah Spina",
@@ -212,8 +327,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Micah Spina's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-15T23:55:47.815000+00:00"
+    "registered_at": "2026-01-15T23:55:47.815000+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "444705675428495360": {
     "child_name": "Helen Anderson",
@@ -221,8 +341,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Helen Anderson's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T00:01:08.236033+00:00"
+    "registered_at": "2026-01-16T00:01:08.236033+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461510028493328571": {
     "child_name": "Landon Nguyen",
@@ -230,8 +355,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Landon Nguyen's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T00:03:40.644428+00:00"
+    "registered_at": "2026-01-16T00:03:40.644428+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1430716791616700604": {
     "child_name": "Ivy Do",
@@ -239,8 +369,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Ivy Do's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T00:07:25.814390+00:00"
+    "registered_at": "2026-01-16T00:07:25.814390+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461511639781216471": {
     "child_name": "Gina Park",
@@ -248,10 +383,16 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Gina Park's Mother",
     "gender": "mother",
-    "teams": [
-      "national"
+    "registered_at": "2026-01-16T00:10:11.918079+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team"
     ],
-    "registered_at": "2026-01-16T00:10:11.918079+00:00"
+    "programs": [
+      "national"
+    ]
   },
   "1461510266398179571": {
     "child_name": "John Kramarz",
@@ -259,8 +400,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "John Kramarz's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T00:13:09.930230+00:00"
+    "registered_at": "2026-01-16T00:13:09.930230+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461514103716843655": {
     "child_name": "Benjamin Shouse",
@@ -268,8 +414,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Benjamin Shouse's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T00:17:12.878345+00:00"
+    "registered_at": "2026-01-16T00:17:12.878345+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "809114535209730068": {
     "child_name": "Leena Abderahman",
@@ -277,8 +428,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Leena Abderahman's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T00:24:30.045816+00:00"
+    "registered_at": "2026-01-16T00:24:30.045816+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1396583898451939358": {
     "child_name": "Bryson Phillips",
@@ -286,10 +442,16 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Bryson Phillips's Mother",
     "gender": "mother",
-    "teams": [
-      "national"
+    "registered_at": "2026-01-16T00:34:15.460402+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team"
     ],
-    "registered_at": "2026-01-16T00:34:15.460402+00:00"
+    "programs": [
+      "national"
+    ]
   },
   "785544725246640148": {
     "child_name": "Maddie Ngo",
@@ -297,11 +459,18 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Maddie Ngo's Father",
     "gender": "father",
-    "teams": [
+    "registered_at": "2026-01-16T00:36:15.563895+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team",
+      "Demonstration Team"
+    ],
+    "programs": [
       "demonstration",
       "national"
-    ],
-    "registered_at": "2026-01-16T00:36:15.563895+00:00"
+    ]
   },
   "1461155052340383857": {
     "child_name": "Jacelyn Huynh",
@@ -309,8 +478,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Jacelyn Huynh's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T00:40:28.922260+00:00"
+    "registered_at": "2026-01-16T00:40:28.922260+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1197397433735454791": {
     "child_name": "Gabriel Schneider",
@@ -318,8 +492,13 @@
     "role_display": "\ud83c\udf93 Student",
     "nickname": "Gabriel Schneider",
     "gender": "student",
-    "teams": [],
-    "registered_at": "2026-01-16T00:52:22.194008+00:00"
+    "registered_at": "2026-01-16T00:52:22.194008+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student"
+    ],
+    "programs": []
   },
   "1461522910337564867": {
     "child_name": "Brandon Nguyen",
@@ -327,8 +506,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Brandon Nguyen's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T00:54:43.366183+00:00"
+    "registered_at": "2026-01-16T00:54:43.366183+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461526346038771725": {
     "child_name": "Roberto Cruz",
@@ -336,8 +520,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Roberto Cruz's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T01:07:00.641750+00:00"
+    "registered_at": "2026-01-16T01:07:00.641750+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461529851277217936": {
     "child_name": "Omar Bash Imam",
@@ -345,8 +534,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Omar Bash Imam's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T01:20:51.140437+00:00"
+    "registered_at": "2026-01-16T01:20:51.140437+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461528066974285854": {
     "child_name": "James Otts",
@@ -354,8 +548,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "James Otts's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T01:24:07.175592+00:00"
+    "registered_at": "2026-01-16T01:24:07.175592+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461531172512469042": {
     "child_name": "Zulal Mazi",
@@ -363,8 +562,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Zulal Mazi's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T01:27:09.905491+00:00"
+    "registered_at": "2026-01-16T01:27:09.905491+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1255986706449043562": {
     "child_name": "Saba Haidari",
@@ -372,8 +576,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Saba Haidari's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T01:45:13.019617+00:00"
+    "registered_at": "2026-01-16T01:45:13.019617+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1288663366285660170": {
     "child_name": "Tania Araujo",
@@ -381,8 +590,13 @@
     "role_display": "\ud83c\udf93 Student",
     "nickname": "Tania Araujo",
     "gender": "student",
-    "teams": [],
-    "registered_at": "2026-01-16T01:48:17.949644+00:00"
+    "registered_at": "2026-01-16T01:48:17.949644+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student"
+    ],
+    "programs": []
   },
   "1461536931375485123": {
     "child_name": "Fikiremariam Mengistu",
@@ -390,8 +604,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Fikiremariam Mengistu's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T01:50:14.305687+00:00"
+    "registered_at": "2026-01-16T01:50:14.305687+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461537440996265994": {
     "child_name": "Tania Araujo",
@@ -399,8 +618,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Tania Araujo's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T01:51:16.068253+00:00"
+    "registered_at": "2026-01-16T01:51:16.068253+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "144159336392818689": {
     "child_name": "Aadhvik Nambi",
@@ -408,8 +632,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Aadhvik Nambi's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T22:58:55.402763+00:00"
+    "registered_at": "2026-01-16T22:58:55.402763+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461137654476312812": {
     "child_name": "Zachary Jurcak",
@@ -417,8 +646,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Zachary Jurcak's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-16T23:24:28.733727+00:00"
+    "registered_at": "2026-01-16T23:24:28.733727+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461146050495774750": {
     "child_name": "Simon Rodriguez",
@@ -426,8 +660,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Simon Rodriguez's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-16T23:44:44.261933+00:00"
+    "registered_at": "2026-01-16T23:44:44.261933+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461868999297204254": {
     "child_name": "Antonella Nunez",
@@ -435,8 +674,13 @@
     "role_display": "\ud83d\udc68 Father",
     "nickname": "Antonella Nunez's Father",
     "gender": "father",
-    "teams": [],
-    "registered_at": "2026-01-17T00:02:18.249182+00:00"
+    "registered_at": "2026-01-17T00:02:18.249182+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1461876772852465901": {
     "child_name": "Jooahn Kim",
@@ -444,10 +688,16 @@
     "role_display": "\ud83d\udc74 Grandfather",
     "nickname": "Jooahn Kim's Grandfather",
     "gender": "grandfather",
-    "teams": [
-      "demonstration"
+    "registered_at": "2026-01-17T00:36:31.093357+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "Demonstration Team"
     ],
-    "registered_at": "2026-01-17T00:36:31.093357+00:00"
+    "programs": [
+      "demonstration"
+    ]
   },
   "1461208838333268089": {
     "child_name": "Lidet Tafere",
@@ -455,8 +705,13 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Lidet Tafere's Mother",
     "gender": "mother",
-    "teams": [],
-    "registered_at": "2026-01-17T15:49:25.106142+00:00"
+    "registered_at": "2026-01-17T15:49:25.106142+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "programs": []
   },
   "1462121248673759234": {
     "child_name": "Pradhyun Madi",
@@ -464,10 +719,16 @@
     "role_display": "\ud83d\udc69 Mother",
     "nickname": "Pradhyun Madi's Mother",
     "gender": "mother",
-    "teams": [
-      "national"
+    "registered_at": "2026-01-17T16:33:29.124884+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team"
     ],
-    "registered_at": "2026-01-17T16:33:29.124884+00:00"
+    "programs": [
+      "national"
+    ]
   },
   "1246314763039019029": {
     "child_name": "Jaime Basuil",
@@ -475,10 +736,83 @@
     "role_display": "\ud83c\udf93 Student",
     "nickname": "Jaime Basuil",
     "gender": "student",
-    "teams": [
+    "registered_at": "2026-01-17T18:02:27.019660+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student",
+      "National Team",
+      "Demonstration Team"
+    ],
+    "programs": [
       "demonstration",
       "national"
+    ]
+  },
+  "750547631767552000": {
+    "child_name": "Admin User",
+    "role": "Admin",
+    "role_display": "\ud83d\udc51 Server Admin",
+    "nickname": "Instructor Danny",
+    "gender": "admin",
+    "registered_at": "2026-01-19T19:50:06.755057+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Admin",
+      "Master Lee's Family"
     ],
-    "registered_at": "2026-01-17T18:02:27.019660+00:00"
+    "programs": [],
+    "auto_added": true,
+    "admin_user": true,
+    "master_lee_family": true
+  },
+  "1461116494606897334": {
+    "child_name": "s.j.lees",
+    "role": "Master Lee Family",
+    "role_display": "\ud83d\udc51 Master Lee Family",
+    "nickname": "S.J. Lee's White Tiger",
+    "gender": "master_family",
+    "registered_at": "2026-01-19T20:00:06.217371+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Master Lee's Family"
+    ],
+    "programs": [],
+    "auto_added": true,
+    "master_lee_family": true
+  },
+  "1462119113202864184": {
+    "child_name": "andyton",
+    "role": "Instructor",
+    "role_display": "\ud83d\udc68\u200d\ud83c\udfeb Instructor",
+    "nickname": "Andy Ton",
+    "gender": "instructor",
+    "registered_at": "2026-01-19T20:01:01.623845+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Instructor"
+    ],
+    "programs": [],
+    "auto_added": true,
+    "instructor": true
+  },
+  "460295058328125450": {
+    "child_name": "sophiel2151",
+    "role": "Master Lee Family",
+    "role_display": "\ud83d\udc51 Master Lee Family",
+    "nickname": "Instructor Sophie",
+    "gender": "master_family",
+    "registered_at": "2026-01-19T20:02:34.433962+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Master Lee's Family"
+    ],
+    "programs": [],
+    "auto_added": true,
+    "master_lee_family": true
   }
 }

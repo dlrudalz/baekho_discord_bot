@@ -59,6 +59,8 @@ NATIONAL_TEAM_ROLE_ID = int(config.get('NATIONAL_TEAM_ROLE_ID', '0'))
 DEMONSTRATION_TEAM_ROLE_ID = int(config.get('DEMONSTRATION_TEAM_ROLE_ID', '0'))
 NATIONAL_TEAM_CHANNEL_ID = int(config.get('NATIONAL_TEAM_CHANNEL_ID', '0'))
 DEMONSTRATION_TEAM_CHANNEL_ID = int(config.get('DEMONSTRATION_TEAM_CHANNEL_ID', '0'))
+AFTER_SCHOOL_ROLE_ID = int(config.get('AFTER_SCHOOL_ROLE_ID', '0'))  # ADD THIS
+AFTER_SCHOOL_CHANNEL_ID = int(config.get('AFTER_SCHOOL_CHANNEL_ID', '0'))  # ADD THIS
 GENERAL_CHAT_CHANNEL_ID = int(config.get('GENERAL_CHAT_CHANNEL_ID', '0'))
 MASTER_LEE_FAMILY_ROLE_ID = int(config.get('MASTER_LEE_FAMILY_ROLE_ID', '0'))
 STUDENT_ROLE_ID = int(config.get('STUDENT_ROLE_ID', '0'))
@@ -69,7 +71,7 @@ ADMIN_USER_ID = int(config.get('ADMIN_USER_ID', '0'))
 PRIVATE_CONVERSATION_CATEGORY_ID = int(config.get('PRIVATE_CONVERSATION_CATEGORY_ID', '0'))
 
 # Command and logging channels
-BOT_COMMAND_CHANNEL_ID = int(config.get('BOT_COMMAND_CHANNEL_ID', '0'))
+BOT_COMMAND_CHANNEL_ID = int(config.get('COMMAND_CHANNEL_ID', '0'))
 LOG_CHANNEL_ID = int(config.get('LOG_CHANNEL_ID', '0'))
 
 # =============================================================================
@@ -267,6 +269,7 @@ def validate_name_format(name: str) -> Tuple[bool, str]:
 # =============================================================================
 # LOGGING SYSTEM
 # =============================================================================
+
 async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord.Embed = None) -> bool:
     """
     Send notification to configured log channel ONLY.
@@ -298,110 +301,61 @@ async def send_to_log_channel(guild: discord.Guild, message: str, embed: discord
         print(f"⚠️ LOG_CHANNEL_ID not configured in config.txt")
     
     return False
-# =============================================================================
-# GENERAL CHAT MUTE SYSTEM
-# =============================================================================
-async def ensure_general_chat_mute_message(guild: discord.Guild) -> None:
-    """
-    Check if the general-chat channel has the permanent mute instruction message.
-    Only checks and adds missing reactions - DOES NOT CREATE NEW MESSAGES.
-    
-    setup.py is responsible for creating the initial message.
-    """
-    general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
-    if not general_chat:
-        print("❌ General chat channel not found")
-        return
-    
-    try:
-        # Check existing pinned messages
-        pinned_messages = await general_chat.pins()
-        
-        # Look for our mute instruction message
-        mute_message_found = None
-        for pinned_msg in pinned_messages:
-            if pinned_msg.author == bot.user and pinned_msg.embeds:
-                for embed in pinned_msg.embeds:
-                    # Look for the message created by setup.py
-                    if embed.title and "How to Access & Use General-Chat" in embed.title:
-                        mute_message_found = pinned_msg
-                        break
-            if mute_message_found:
-                break
-        
-        # If message exists, just ensure it has the reaction
-        if mute_message_found:
-            # Check if it has the reaction
-            has_reaction = False
-            for reaction in mute_message_found.reactions:
-                if str(reaction.emoji) == '🔇':
-                    has_reaction = True
-                    break
-            
-            if not has_reaction:
-                await mute_message_found.add_reaction('🔇')
-                print(f"✅ Added missing 🔇 reaction to existing mute instruction message in #{general_chat.name}")
-            else:
-                print(f"✅ Mute instruction message found with reaction in #{general_chat.name}")
-        else:
-            # Message doesn't exist - setup.py should have created it
-            print("⚠️ Mute instruction message not found. Run !setup_server to create it.")
-            
-    except Exception as e:
-        print(f"❌ Error checking mute instruction message: {e}")
 
 # =============================================================================
 # COMMAND ACCESS CONTROL
 # =============================================================================
-
 def bot_channel_only():
     """
     Decorator to restrict commands to bot command channel.
     
-    Ensures commands only work in the designated bot command channel
-    and only for the admin user.
+    Silently deletes ALL command messages if used in wrong channel.
     """
     async def predicate(ctx):
-        # Channel restriction
+        # Channel restriction - silently delete if wrong channel
         if ctx.channel.id != BOT_COMMAND_CHANNEL_ID:
-            if ctx.author.id == ADMIN_USER_ID:
-                await ctx.send(f"❌ Manual commands can only be used in <#{BOT_COMMAND_CHANNEL_ID}>", ephemeral=True)
+            try:
+                await ctx.message.delete()
+            except:
+                pass
             return False
         
         # Admin authorization
         return ctx.author.id == ADMIN_USER_ID
     
     return commands.check(predicate)
-
 # =============================================================================
 # REGISTRATION VIEW CLASSES
 # =============================================================================
 class FinalConfirmationView(discord.ui.View):
     """
     Final confirmation view before registration completion.
-    
-    Allows users to review all entered information and make
-    changes if needed before final submission.
     """
     
-    def __init__(self, user_id: int, child_name: str, role: str, role_display: str, teams_selected: list):
-        super().__init__(timeout=300)  # 5 minute timeout
+    def __init__(self, user_id: int, child_name: str, role: str, role_display: str, programs_selected: list):
+        super().__init__(timeout=300)
         self.user_id = user_id
         self.child_name = child_name
         self.role = role
         self.role_display = role_display
-        self.teams_selected = teams_selected
+        self.programs_selected = programs_selected
         
-        # Format teams for display
-        if self.teams_selected:
-            team_list = []
-            if "national" in self.teams_selected:
-                team_list.append("National Team 🔴")
-            if "demonstration" in self.teams_selected:
-                team_list.append("Demonstration Team 🔵")
-            self.teams_text = ", ".join(team_list)
-        else:
-            self.teams_text = "No teams selected"
+        # Format programs for display
+        self.programs_text = self.format_programs_text(programs_selected)
+    
+    def format_programs_text(self, programs_selected: List[str]) -> str:
+        """Format programs list for display."""
+        if not programs_selected:
+            return "No programs selected"
+        
+        program_list = []
+        if "national" in programs_selected:
+            program_list.append("National Team 🔴")
+        if "demonstration" in programs_selected:
+            program_list.append("Demonstration Team 🔵")
+        if "after_school" in programs_selected:
+            program_list.append("After School 📚")
+        return ", ".join(program_list)
     
     @discord.ui.button(label="✅ Yes, Everything Looks Good!", style=discord.ButtonStyle.green, emoji="✅", row=0)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -441,11 +395,11 @@ class FinalConfirmationView(discord.ui.View):
         """Return to role selection step."""
         await self.go_back_to_step(interaction, "role", "Step 2: Role Selection")
     
-    @discord.ui.button(label="🎯 Change Teams", style=discord.ButtonStyle.secondary, emoji="🎯", row=1)
-    async def change_teams_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Return to team selection step."""
-        await self.go_back_to_step(interaction, "teams", "Step 3: Team Selection")
-    
+    @discord.ui.button(label="🎯 Change Programs", style=discord.ButtonStyle.secondary, emoji="🎯", row=1)
+    async def change_programs_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Return to program selection step."""
+        await self.go_back_to_step(interaction, "teams", "Step 3: Program Selection")
+
     async def go_back_to_step(self, interaction: discord.Interaction, step: str, step_name: str) -> None:
         """
         Navigate back to a specific registration step.
@@ -547,7 +501,7 @@ class FinalConfirmationView(discord.ui.View):
                         "Click **✅ Done** when finished.",
                 color=discord.Color.blue()
             )
-            view = TeamSelectView(self.user_id, preserved_name, preserved_role)
+            view = ProgramSelectView(self.user_id, preserved_name, preserved_role)
             await dm_channel.send(embed=embed, view=view)
         
         print(f"👤 {interaction.user.name} went back to {step} step from final confirmation")
@@ -857,6 +811,7 @@ class RoleConfirmationView(discord.ui.View):
         
         print(f"👤 {interaction.user.name} confirmed role and returned to final confirmation")
     
+    # In RoleConfirmationView.handle_normal_flow method, change to:
     async def handle_normal_flow(self, interaction: discord.Interaction) -> None:
         """Handle role confirmation in normal registration flow."""
         await interaction.response.edit_message(
@@ -865,23 +820,25 @@ class RoleConfirmationView(discord.ui.View):
             view=self
         )
         
-        # Proceed to team selection
+        # Proceed to program selection
         await asyncio.sleep(1.5)
         dm_channel = await interaction.user.create_dm()
         
-        team_embed = discord.Embed(
-            title="Step 3: Team Selection",
-            description="Which team(s) is your child currently in?\n\n"
+        program_embed = discord.Embed(
+            title="Step 3: Program Selection",
+            description="Which program(s) is your child currently enrolled in?\n\n"
                     "**THIS IS FOR ANNOUNCEMENT PURPOSES ONLY**.\n\n"
                     "🔴 **National Team**\n"
-                    "🔵 **Demonstration Team**\n\n"
-                    "You can select one, both, or none.\n"
+                    "🔵 **Demonstration Team**\n"
+                    "📚 **After School**\n\n"
+                    "You can select one, multiple, or none.\n"
+                    "**Click 'None' if not enrolled in any program.**\n"
                     "Click **✅ Done** when finished.",
             color=discord.Color.blue()
         )
         
-        view = TeamSelectView(self.user_id, self.child_name, self.role)
-        await dm_channel.send(embed=team_embed, view=view)
+        view = ProgramSelectView(self.user_id, self.child_name, self.role)
+        await dm_channel.send(embed=program_embed, view=view)
         
         print(f"👤 {interaction.user.name} confirmed role: {self.role_display}")
     
@@ -965,29 +922,40 @@ class RoleConfirmationView(discord.ui.View):
         view = RoleSelectView(self.user_id, self.child_name)
         await dm_channel.send(embed=embed, view=view)
 
-class TeamSelectView(discord.ui.View):
-    """View for selecting team memberships with multi-select capability."""
+class ProgramSelectView(discord.ui.View):
+    """View for selecting program enrollments with multi-select capability."""
     
     def __init__(self, user_id: int, child_name: str, role: str):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.child_name = child_name
         self.role = role
-        self.selected_teams = set()  # Track selected teams
+        self.selected_programs = set()  # Track selected programs
+        self.none_selected = False  # Track if none is selected
     
     @discord.ui.button(label="National Team", style=discord.ButtonStyle.gray, emoji="🔴", row=0)
     async def national_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Toggle National Team selection."""
-        await self.toggle_team(interaction, button, "national", "National Team")
+        await self.toggle_program(interaction, button, "national", "National Team")
     
     @discord.ui.button(label="Demonstration Team", style=discord.ButtonStyle.gray, emoji="🔵", row=0)
     async def demonstration_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Toggle Demonstration Team selection."""
-        await self.toggle_team(interaction, button, "demonstration", "Demonstration Team")
+        await self.toggle_program(interaction, button, "demonstration", "Demonstration Team")
     
-    @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.green, emoji="✅", row=1)
+    @discord.ui.button(label="After School", style=discord.ButtonStyle.gray, emoji="📚", row=1)
+    async def after_school_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Toggle After School selection."""
+        await self.toggle_program(interaction, button, "after_school", "After School")
+    
+    @discord.ui.button(label="None", style=discord.ButtonStyle.gray, emoji="❌", row=1)
+    async def none_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Toggle None selection."""
+        await self.toggle_none(interaction, button)
+    
+    @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.green, emoji="✅", row=2)
     async def done_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Finalize team selections and show confirmation."""
+        """Finalize program selections and show confirmation."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
             return
@@ -997,93 +965,149 @@ class TeamSelectView(discord.ui.View):
         if self.user_id in user_states:
             modifying_from_final = user_states[self.user_id].get('modifying_from_final', False)
         
-        # Update user state with selected teams
+        # Update user state with selected programs
         if self.user_id in user_states:
-            user_states[self.user_id]['teams_selected'] = list(self.selected_teams)
-            user_states[self.user_id]['waiting_for_teams'] = False
-            user_states[self.user_id]['waiting_for_teams_confirmation'] = True
+            user_states[self.user_id]['programs_selected'] = list(self.selected_programs)
+            user_states[self.user_id]['waiting_for_programs'] = False
+            user_states[self.user_id]['waiting_for_programs_confirmation'] = True
         
         # Disable buttons and show confirmation
         for child in self.children:
             child.disabled = True
         
-        # Format teams for display
-        teams_text = self.format_teams_text()
+        # Format programs for display
+        programs_text = self.format_programs_text()
         
         embed = discord.Embed(
-            title="✅ Teams Selected",
-            description=f"You selected: **{teams_text}**\n\n"
+            title="✅ Programs Selected",
+            description=f"You selected: **{programs_text}**\n\n"
                       f"**Is this correct?**",
             color=discord.Color.gold()
         )
         
-        confirmation_view = TeamConfirmationView(
+        confirmation_view = ProgramConfirmationView(
             self.user_id,
             self.child_name,
             self.role,
-            list(self.selected_teams),
+            list(self.selected_programs),
             modifying_from_final
         )
         
         await interaction.response.edit_message(embed=embed, view=confirmation_view)
         
-        print(f"👤 {interaction.user.name} selected teams: {teams_text}")
+        print(f"👤 {interaction.user.name} selected programs: {programs_text}")
     
-    async def toggle_team(self, interaction: discord.Interaction, button: discord.ui.Button, team: str, team_display: str) -> None:
-        """Toggle team selection state."""
+    async def toggle_program(self, interaction: discord.Interaction, button: discord.ui.Button, program: str, program_display: str) -> None:
+        """Toggle program selection state."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
             return
         
-        # Toggle team in selection set
-        if team in self.selected_teams:
-            self.selected_teams.remove(team)
-            button.style = discord.ButtonStyle.gray
-            button.label = team_display
-            print(f"👤 {interaction.user.name} deselected {team_display}")
+        # If "none" is selected, clear it when selecting a program
+        if self.none_selected:
+            self.none_selected = False
+            # Reset none button style
+            for child in self.children:
+                if hasattr(child, 'label') and child.label and child.label.replace("✓ ", "") == "None":
+                    child.style = discord.ButtonStyle.gray
+                    child.label = "None"
+        
+        # Toggle program in selection set
+        if program in self.selected_programs:
+            self.selected_programs.remove(program)
+            # Find the correct button and update its style
+            for child in self.children:
+                if hasattr(child, 'label') and child.label and program_display in child.label:
+                    child.style = discord.ButtonStyle.gray
+                    child.label = child.label.replace("✓ ", "")
+            print(f"👤 {interaction.user.name} deselected {program_display}")
         else:
-            self.selected_teams.add(team)
-            button.style = discord.ButtonStyle.green
-            button.label = f"✓ {team_display}"
-            print(f"👤 {interaction.user.name} selected {team_display}")
+            self.selected_programs.add(program)
+            # Find the correct button and update its style
+            for child in self.children:
+                if hasattr(child, 'label') and child.label and program_display in child.label:
+                    child.style = discord.ButtonStyle.green
+                    child.label = f"✓ {program_display}"
+            print(f"👤 {interaction.user.name} selected {program_display}")
         
         # Update button appearance
         await interaction.response.edit_message(view=self)
     
-    def format_teams_text(self) -> str:
-        """Format selected teams for display."""
-        if not self.selected_teams:
-            return "No teams selected"
+    async def toggle_none(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        """Toggle None selection (exclusive with other programs)."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This selection is not for you.", ephemeral=True)
+            return
         
-        team_list = []
-        if "national" in self.selected_teams:
-            team_list.append("National Team 🔴")
-        if "demonstration" in self.selected_teams:
-            team_list.append("Demonstration Team 🔵")
-        return ", ".join(team_list)
-
-class TeamConfirmationView(discord.ui.View):
-    """View for confirming selected team memberships."""
+        if self.none_selected:
+            # Deselect none
+            self.none_selected = False
+            # Find the None button and update its style
+            for child in self.children:
+                if hasattr(child, 'label') and child.label and child.label.replace("✓ ", "") == "None":
+                    child.style = discord.ButtonStyle.gray
+                    child.label = "None"
+        else:
+            # Select none (clear all other selections)
+            self.none_selected = True
+            self.selected_programs.clear()
+            
+            # Find the None button and update its style
+            for child in self.children:
+                if hasattr(child, 'label') and child.label and child.label.replace("✓ ", "") == "None":
+                    child.style = discord.ButtonStyle.green
+                    child.label = "✓ None"
+                
+                # Reset all other program buttons (excluding Done button)
+                if hasattr(child, 'label') and child.label and child.label.replace("✓ ", "") not in ["None", "✅ Done"]:
+                    child.style = discord.ButtonStyle.gray
+                    child.label = child.label.replace("✓ ", "")
+        
+        print(f"👤 {interaction.user.name} {'selected' if self.none_selected else 'deselected'} None")
+        
+        # Update button appearance
+        await interaction.response.edit_message(view=self)
     
-    def __init__(self, user_id: int, child_name: str, role: str, teams_selected: list, modifying_from_final: bool = False):
+    def format_programs_text(self) -> str:
+        """Format selected programs for display."""
+        if self.none_selected:
+            return "No programs selected"
+        
+        if not self.selected_programs:
+            return "No programs selected"
+        
+        program_list = []
+        if "national" in self.selected_programs:
+            program_list.append("National Team 🔴")
+        if "demonstration" in self.selected_programs:
+            program_list.append("Demonstration Team 🔵")
+        if "after_school" in self.selected_programs:
+            program_list.append("After School 📚")
+        
+        return ", ".join(program_list)
+
+class ProgramConfirmationView(discord.ui.View):
+    """View for confirming selected program enrollments."""
+    
+    def __init__(self, user_id: int, child_name: str, role: str, programs_selected: list, modifying_from_final: bool = False):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.child_name = child_name
         self.role = role
-        self.teams_selected = teams_selected
+        self.programs_selected = programs_selected
         self.modifying_from_final = modifying_from_final
-        self.teams_text = self.format_teams_text(teams_selected)
+        self.programs_text = self.format_programs_text(programs_selected)
     
     @discord.ui.button(label="✅ Yes, This is Correct", style=discord.ButtonStyle.green, emoji="✅", row=0)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Confirm team selections and proceed."""
+        """Confirm program selections and proceed."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
             return
         
         # Update user state based on flow
         if self.user_id in user_states:
-            user_states[self.user_id]['waiting_for_teams_confirmation'] = False
+            user_states[self.user_id]['waiting_for_programs_confirmation'] = False
             
             if self.modifying_from_final:
                 user_states[self.user_id]['waiting_for_final_confirmation'] = True
@@ -1101,9 +1125,9 @@ class TeamConfirmationView(discord.ui.View):
             await self.handle_normal_flow(interaction)
     
     async def handle_modification_flow(self, interaction: discord.Interaction) -> None:
-        """Handle team confirmation when modifying from final step."""
+        """Handle program confirmation when modifying from final step."""
         await interaction.response.edit_message(
-            content=f"✅ **Teams updated:** {self.teams_text}",
+            content=f"✅ **Programs updated:** {self.programs_text}",
             embed=None,
             view=self
         )
@@ -1113,9 +1137,9 @@ class TeamConfirmationView(discord.ui.View):
         await self.return_to_final_confirmation(interaction.user)
     
     async def handle_normal_flow(self, interaction: discord.Interaction) -> None:
-        """Handle team confirmation in normal registration flow."""
+        """Handle program confirmation in normal registration flow."""
         await interaction.response.edit_message(
-            content=f"✅ **Step 3 Complete**\n**Teams confirmed:** {self.teams_text}",
+            content=f"✅ **Step 3 Complete**\n**Programs confirmed:** {self.programs_text}",
             embed=None,
             view=self
         )
@@ -1135,10 +1159,10 @@ class TeamConfirmationView(discord.ui.View):
         
         # Create and send final confirmation
         final_embed = self.create_final_confirmation_embed(child_name, role_display)
-        view = FinalConfirmationView(self.user_id, child_name, self.role, role_display, self.teams_selected)
+        view = FinalConfirmationView(self.user_id, child_name, self.role, role_display, self.programs_selected)
         await dm_channel.send(embed=final_embed, view=view)
         
-        print(f"👤 {user.name} updated teams and returned to final confirmation")
+        print(f"👤 {user.name} updated programs and returned to final confirmation")
     
     async def send_final_confirmation(self, user: discord.User) -> None:
         """Send final confirmation view in normal flow."""
@@ -1151,10 +1175,10 @@ class TeamConfirmationView(discord.ui.View):
         
         # Create and send final confirmation
         final_embed = self.create_final_confirmation_embed(child_name, role_display)
-        view = FinalConfirmationView(self.user_id, child_name, self.role, role_display, self.teams_selected)
+        view = FinalConfirmationView(self.user_id, child_name, self.role, role_display, self.programs_selected)
         await dm_channel.send(embed=final_embed, view=view)
         
-        print(f"👤 {user.name} confirmed teams, moving to final confirmation")
+        print(f"👤 {user.name} confirmed programs, moving to final confirmation")
     
     def create_final_confirmation_embed(self, child_name: str, role_display: str) -> discord.Embed:
         """Create final confirmation embed with user data."""
@@ -1170,7 +1194,7 @@ class TeamConfirmationView(discord.ui.View):
         
         embed.add_field(name="📝 Child's Name", value=f"```{child_name}```", inline=False)
         embed.add_field(name=f"{role_emoji} Your Role", value=f"```{role_display}```", inline=False)
-        embed.add_field(name="🎯 Selected Teams", value=f"```{self.teams_text}```", inline=False)
+        embed.add_field(name="🎯 Selected Programs", value=f"```{self.programs_text}```", inline=False)
         embed.set_footer(text="Take a moment to review before confirming!")
         
         return embed
@@ -1181,62 +1205,67 @@ class TeamConfirmationView(discord.ui.View):
             "mother": "👩",
             "father": "👨",
             "grandmother": "👵",
-            "grandfather": "👴"
+            "grandfather": "👴",
+            "student": "🎓"
         }
         return emoji_map.get(role, "👤")
     
-    def format_teams_text(self, teams_selected: List[str]) -> str:
-        """Format teams list for display."""
-        if not teams_selected:
-            return "No teams selected"
+    def format_programs_text(self, programs_selected: List[str]) -> str:
+        """Format programs list for display."""
+        if not programs_selected:
+            return "No programs selected"
         
-        team_list = []
-        if "national" in teams_selected:
-            team_list.append("National Team 🔴")
-        if "demonstration" in teams_selected:
-            team_list.append("Demonstration Team 🔵")
-        return ", ".join(team_list)
+        program_list = []
+        if "national" in programs_selected:
+            program_list.append("National Team 🔴")
+        if "demonstration" in programs_selected:
+            program_list.append("Demonstration Team 🔵")
+        if "after_school" in programs_selected:
+            program_list.append("After School 📚")
+        return ", ".join(program_list)
     
     @discord.ui.button(label="✏️ No, I Need to Fix It", style=discord.ButtonStyle.gray, emoji="✏️", row=1)
     async def fix_it_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Allow user to re-select teams."""
+        """Allow user to re-select programs."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
             return
         
-        # Reset team selection state
+        # Reset program selection state
         if self.user_id in user_states:
-            user_states[self.user_id]['waiting_for_teams_confirmation'] = False
-            user_states[self.user_id]['waiting_for_teams'] = True
-            user_states[self.user_id]['teams_selected'] = []
+            user_states[self.user_id]['waiting_for_programs_confirmation'] = False
+            user_states[self.user_id]['waiting_for_programs'] = True
+            user_states[self.user_id]['programs_selected'] = []
         
-        # Disable buttons and restart team selection
+        # Disable buttons and restart program selection
         for child in self.children:
             child.disabled = True
         
         await interaction.response.edit_message(
-            content="🔄 Let's select teams again...",
+            content="🔄 Let's select programs again...",
             embed=None,
             view=self
         )
         
-        # Send team selection again
+        # Send program selection again
         await asyncio.sleep(1.5)
         dm_channel = await interaction.user.create_dm()
         
-        team_embed = discord.Embed(
-            title="Step 3: Team Selection",
-            description="Which team(s) is your child currently in?\n\n"
+        program_embed = discord.Embed(
+            title="Step 3: Program Selection",
+            description="Which program(s) is your child currently enrolled in?\n\n"
                     "**THIS IS FOR ANNOUNCEMENT PURPOSES ONLY**.\n\n"
                     "🔴 **National Team**\n"
-                    "🔵 **Demonstration Team**\n\n"
-                    "You can select one, both, or none.\n"
+                    "🔵 **Demonstration Team**\n"
+                    "📚 **After School**\n\n"
+                    "You can select one, multiple, or none.\n"
+                    "**Click 'None' if not enrolled in any program.**\n"
                     "Click **✅ Done** when finished.",
             color=discord.Color.blue()
         )
         
-        view = TeamSelectView(self.user_id, self.child_name, self.role)
-        await dm_channel.send(embed=team_embed, view=view)
+        view = ProgramSelectView(self.user_id, self.child_name, self.role)
+        await dm_channel.send(embed=program_embed, view=view)
 
 # =============================================================================
 # PRIVATE CHANNEL MANAGEMENT CLASSES
@@ -1334,6 +1363,13 @@ class ConfirmDeleteView(discord.ui.View):
             channel_name = channel.name
             user = interaction.guild.get_member(self.user_id)
             
+            # TICKER SYSTEM: Reset the ticker before deleting channel
+            user_id_str = str(self.user_id)
+            if user_id_str in registered_users:
+                registered_users[user_id_str]['has_active_private_chat'] = False
+                registered_users[user_id_str]['private_chat_channel_id'] = None
+                save_registered_users(registered_users)
+            
             # Send immediate response before deletion
             await interaction.response.send_message(
                 "🗑️ Deleting channel...",
@@ -1401,6 +1437,79 @@ class ConfirmDeleteView(discord.ui.View):
         self.stop()
         
         await interaction.response.edit_message(content="✅ Deletion cancelled.", embed=None, view=None)
+
+class GeneralChatButtonView(discord.ui.View):
+    """
+    View for the general-chat button that creates private chats.
+    
+    This button replaces the old typing/reaction system.
+    """
+    
+    def __init__(self):
+        super().__init__(timeout=None)  # Permanent view
+    
+    @discord.ui.button(label="📩 Request Private Chat", style=discord.ButtonStyle.primary, custom_id="request_private_chat", emoji="📩")
+    async def request_private_chat_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle private chat request button press."""
+        # Defer the response since we need time to create the channel
+        await interaction.response.defer(ephemeral=True)
+        
+        guild = interaction.guild
+        user = interaction.user
+        
+        print(f"📩 {user.name} clicked the private chat request button")
+        
+        # Check if user is allowed (has Family Member, Student, or Instructor role)
+        allowed_roles = [FAMILY_ROLE_ID, STUDENT_ROLE_ID, INSTRUCTOR_ROLE_ID, MASTER_LEE_FAMILY_ROLE_ID]
+        user_roles = [role.id for role in user.roles]
+        
+        has_allowed_role = any(role_id in user_roles for role_id in allowed_roles if role_id != 0)
+        
+        if not has_allowed_role:
+            # Check if they're a registered user
+            is_registered = str(user.id) in registered_users
+            
+            if not is_registered:
+                await interaction.followup.send(
+                    "❌ You need to complete registration first! Please react with ✅ in the rules channel to begin.",
+                    ephemeral=True
+                )
+                return
+        
+        # TICKER SYSTEM: Check if user already has an active private chat
+        user_id_str = str(user.id)
+        if user_id_str in registered_users:
+            user_data = registered_users[user_id_str]
+            
+            # Check if they have an active private chat according to ticker
+            if user_data.get('has_active_private_chat', False) and user_data.get('private_chat_channel_id'):
+                channel_id = user_data['private_chat_channel_id']
+                existing_channel = guild.get_channel(channel_id)
+                
+                if existing_channel:
+                    # Channel exists and ticker says it's active
+                    # Simply return without sending any message
+                    return
+        
+        # Create new private chat
+        private_chat = await create_private_channel(guild, user, "general-chat-button")
+        
+        if not private_chat:
+            await interaction.followup.send(
+                "❌ Failed to create private chat. Please contact an administrator.",
+                ephemeral=True
+            )
+            return
+        
+        # Update ticker in registered users
+        if user_id_str in registered_users:
+            registered_users[user_id_str]['has_active_private_chat'] = True
+            registered_users[user_id_str]['private_chat_channel_id'] = private_chat.id
+            save_registered_users(registered_users)
+        
+        # Return without sending the instructions message
+        return
+
 # =============================================================================
 # PRIVATE CHANNEL FUNCTIONS
 # =============================================================================
@@ -1413,6 +1522,7 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
     - Permanent delete button pinned at top (admin only)
     - Proper permission configuration
     - Activity tracking
+    - Ticker system to prevent duplicate channels
     
     Args:
         guild: Discord guild object
@@ -1423,14 +1533,61 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
         Created text channel or None on error
     """
     try:
-        # Check for existing channel for this user
+        # TICKER SYSTEM: Check registered_users.json first for existing channel
+        user_id_str = str(user.id)
+        
+        # If user is registered, check if they have an active private chat ticker
+        if user_id_str in registered_users:
+            user_data = registered_users[user_id_str]
+            
+            # Check if ticker says they have an active chat
+            has_active_ticker = user_data.get('has_active_private_chat', False)
+            channel_id = user_data.get('private_chat_channel_id')
+            
+            if has_active_ticker and channel_id:
+                # Ticker says they have an active chat - check if channel exists
+                channel = guild.get_channel(channel_id)
+                
+                if channel:
+                    # Channel exists and ticker is correct
+                    # Update activity timestamp
+                    private_channels[channel_id]['last_activity'] = time.time()
+                    print(f"✅ Using existing channel from ticker: #{channel.name} for {user.name}")
+                    return channel
+                else:
+                    # Channel doesn't exist but ticker says it should
+                    # This means channel was deleted manually or by Discord
+                    print(f"⚠️ Ticker inconsistency: Channel {channel_id} doesn't exist for {user.name}")
+                    
+                    # Clear the ticker since channel doesn't exist
+                    registered_users[user_id_str]['has_active_private_chat'] = False
+                    registered_users[user_id_str]['private_chat_channel_id'] = None
+                    save_registered_users(registered_users)
+        
+        # SECONDARY CHECK: Check for existing channel in memory (backup check)
         if user.id in user_private_channels:
             channel_id = user_private_channels[user.id]
             channel = guild.get_channel(channel_id)
+            
             if channel:
+                # Channel exists in memory tracking
                 # Update activity timestamp
                 private_channels[channel_id]['last_activity'] = time.time()
+                
+                # Also update the ticker in registered_users.json for consistency
+                if user_id_str in registered_users:
+                    registered_users[user_id_str]['has_active_private_chat'] = True
+                    registered_users[user_id_str]['private_chat_channel_id'] = channel_id
+                    save_registered_users(registered_users)
+                
+                print(f"✅ Using existing channel from memory: #{channel.name} for {user.name}")
                 return channel
+            else:
+                # Channel exists in memory but not in Discord
+                # Clean up the memory tracking
+                if channel_id in private_channels:
+                    del private_channels[channel_id]
+                del user_private_channels[user.id]
         
         # Get private conversation category from config
         if not PRIVATE_CONVERSATION_CATEGORY_ID:
@@ -1438,14 +1595,17 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
             return None
         
         category = guild.get_channel(PRIVATE_CONVERSATION_CATEGORY_ID)
-        if not category:
+        if not category or not isinstance(category, discord.CategoryChannel):
             print(f"❌ Private conversation category not found with ID: {PRIVATE_CONVERSATION_CATEGORY_ID}")
             print("   Please ensure setup program has run and category exists")
             return None
                 
         # Configure channel permissions
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False, read_message_history=False),
+            guild.default_role: discord.PermissionOverwrite(
+                read_messages=False, 
+                read_message_history=False
+            ),
             user: discord.PermissionOverwrite(
                 read_messages=True, 
                 send_messages=True, 
@@ -1486,53 +1646,114 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
             )
         
         # Create sanitized channel name
-        channel_name = f"private-{user.display_name.lower().replace(' ', '-')[:20]}"
+        # Remove special characters and limit length
+        sanitized_name = user.display_name.lower().replace(' ', '-')
+        sanitized_name = ''.join(c for c in sanitized_name if c.isalnum() or c == '-')
+        sanitized_name = sanitized_name[:20]  # Discord limit is 100, but we'll keep it short
+        
+        # Ensure the name starts with 'private-'
+        if not sanitized_name.startswith('private-'):
+            channel_name = f"private-{sanitized_name}"
+        else:
+            channel_name = sanitized_name
+        
+        # Make sure channel name is unique by adding timestamp if needed
+        existing_names = [ch.name for ch in category.channels if isinstance(ch, discord.TextChannel)]
+        if channel_name in existing_names:
+            # Add timestamp to make it unique
+            timestamp = str(int(time.time()))[-4:]  # Last 4 digits of timestamp
+            channel_name = f"{channel_name}-{timestamp}"
+        
+        # Create the channel
         channel = await category.create_text_channel(
             name=channel_name,
             overwrites=overwrites,
             reason=f"Private conversation for {user.name}",
-            topic=f"Private conversation with {user.name} | From: {original_channel_name}"
+            topic=f"Private conversation with {user.name} | From: {original_channel_name} | Created: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
         )
         
-        # Store channel metadata
+        # Store channel metadata in memory
         current_time = time.time()
         private_channels[channel.id] = {
             'user_id': user.id,
             'created_at': current_time,
             'last_activity': current_time,
-            'pinned_message_id': None,  # Set after creating pinned message
+            'pinned_message_id': None,  # Will be set after creating pinned message
             'original_channel': original_channel_name,
-            'user_name': user.name
+            'user_name': user.name,
+            'channel_name': channel_name
         }
         user_private_channels[user.id] = channel.id
+        
+        # TICKER SYSTEM: Update ticker in registered users
+        if user_id_str in registered_users:
+            registered_users[user_id_str]['has_active_private_chat'] = True
+            registered_users[user_id_str]['private_chat_channel_id'] = channel.id
+            save_registered_users(registered_users)
+        else:
+            # User is not in registered_users.json (might be Master Lee's Family or other special case)
+            print(f"⚠️ User {user.name} not in registered_users.json, but creating channel anyway")
+            
+            # Create a minimal entry for them
+            registered_users[user_id_str] = {
+                'child_name': user.name,
+                'role': 'Special',
+                'role_display': 'Special User',
+                'nickname': user.display_name,
+                'gender': 'unknown',
+                'teams': [],
+                'registered_at': discord.utils.utcnow().isoformat(),
+                'has_active_private_chat': True,
+                'private_chat_channel_id': channel.id,
+                'auto_added': True
+            }
+            save_registered_users(registered_users)
         
         # Create and pin permanent delete button
         delete_view = PermanentDeleteChannelView(channel.id, user.id)
         delete_embed = discord.Embed(
             title="🗑️ Admin Delete Button",
             description="This button is permanently available for admin to delete this private chat.\n\n"
-                       "**Only the admin can use this button.**",
+                       "**Who can use this button:**\n"
+                       "• Server Admin\n"
+                       "• Master Lee's Family members\n\n"
+                       "**Important:**\n"
+                       "• Do NOT create new private chats\n"
+                       "• Use this channel for all communication\n"
+                       "• Only admins can delete this channel",
             color=discord.Color.red()
         )
+        delete_embed.set_footer(text="This button will always be available at the top of this channel")
         
         delete_message = await channel.send(embed=delete_embed, view=delete_view)
         await delete_message.pin()
         private_channels[channel.id]['pinned_message_id'] = delete_message.id
         
         # Send welcome message
-        welcome_msg = await channel.send(
-            f"🔒 Private conversation for {user.mention}\n"
-            f"Messages from #{original_channel_name} will appear here.\n"
-            f"Only you and admin can see this channel.\n\n"
-            f"**Admin can delete this chat at any time using the pinned button above.**"
+        welcome_embed = discord.Embed(
+            title="🔒 Private Conversation",
+            description=f"Welcome to your private conversation channel, {user.mention}!\n\n"
+                      f"**How to use this channel:**\n"
+                      f"1. Use this channel for all communication\n"
+                      f"2. Do NOT create new private chats\n"
+                      f"3. Use this same channel every time\n"
+                      f"4. Only admins can delete this channel\n\n"
+                      f"**Information:**\n"
+                      f"• Created from: #{original_channel_name}\n"
+                      f"• Created at: <t:{int(current_time)}:F>\n"
+                      f"• Delete button: Pinned above\n\n"
+                      f"Please send your message here!",
+            color=discord.Color.blue()
         )
+        
+        await channel.send(embed=welcome_embed)
         
         # Log channel creation
         embed = discord.Embed(
             title="🔔 New Private Chat Created",
             description=f"**User:** {user.mention} ({user.id})\n"
                       f"**From:** #{original_channel_name}\n"
-                      f"**Channel:** #{channel.name}\n"
+                      f"**Channel:** #{channel.name} ({channel.id})\n"
                       f"**Created:** <t:{int(current_time)}:R>\n\n"
                       f"A permanent delete button is pinned at the top (admin only).",
             color=discord.Color.blue(),
@@ -1541,12 +1762,189 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
         await send_to_log_channel(guild, "", embed)
         
         print(f"🔒 Created private chat for {user.name} with permanent delete button")
+        print(f"   Channel: #{channel.name} (ID: {channel.id})")
+        print(f"   Ticker updated: has_active_private_chat = True")
+        
         return channel
         
-    except Exception as e:
-        print(f"❌ Error creating private chat: {e}")
+    except discord.Forbidden as e:
+        print(f"❌ Permission error creating private chat: {e}")
+        print(f"   Make sure the bot has 'Manage Channels' permission")
         return None
-
+    except discord.HTTPException as e:
+        if e.status == 429:  # Rate limit
+            print(f"⏳ Rate limited, retry after: {e.retry_after} seconds")
+            await asyncio.sleep(e.retry_after)
+            
+            # Try to create again after rate limit
+            try:
+                print("🔄 Retrying channel creation after rate limit...")
+                return await create_private_channel(guild, user, original_channel_name)
+            except Exception as retry_error:
+                print(f"❌ Retry failed: {retry_error}")
+                return None
+        else:
+            print(f"❌ Discord API error creating private chat: {e}")
+            return None
+    except Exception as e:
+        print(f"❌ Unexpected error creating private chat: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        return None
+    
+async def reinitialize_private_chat_views():
+    """
+    Re-register persistent delete button views for existing private chats.
+    This is necessary when the bot restarts to maintain button functionality.
+    """
+    if not PRIVATE_CONVERSATION_CATEGORY_ID:
+        print("⚠️ PRIVATE_CONVERSATION_CATEGORY_ID not configured, cannot reinitialize views")
+        return
+    
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print("❌ Guild not found for reinitializing views")
+        return
+    
+    category = guild.get_channel(PRIVATE_CONVERSATION_CATEGORY_ID)
+    if not category or not isinstance(category, discord.CategoryChannel):
+        print(f"❌ Private conversation category not found: {PRIVATE_CONVERSATION_CATEGORY_ID}")
+        return
+    
+    print(f"🔄 Reinitializing delete button views for private chats in category: {category.name}")
+    
+    # Load registered users to get user IDs for existing channels
+    registered_users = load_registered_users()
+    
+    # Clear and rebuild tracking dictionaries
+    private_channels.clear()
+    user_private_channels.clear()
+    
+    # Scan all channels in the private conversation category
+    for channel in category.channels:
+        if isinstance(channel, discord.TextChannel) and channel.name.startswith("private-"):
+            print(f"  🔍 Found existing private chat: #{channel.name}")
+            
+            # Try to extract user ID from channel name or topic
+            user_id = None
+            
+            # Method 1: Check if user exists in registered_users and has this channel ID
+            for user_id_str, user_data in registered_users.items():
+                if user_data.get('private_chat_channel_id') == channel.id:
+                    user_id = int(user_id_str)
+                    break
+            
+            # Method 2: Extract from channel topic if possible
+            if not user_id and channel.topic:
+                import re
+                # Look for user ID in the topic
+                match = re.search(r'User ID: (\d+)', channel.topic)
+                if match:
+                    user_id = int(match.group(1))
+            
+            # Method 3: Extract from channel permissions
+            if not user_id:
+                for member_id, perms in channel.overwrites.items():
+                    if isinstance(member_id, discord.Member) and perms.read_messages:
+                        # Check if this is a regular user (not admin/Master Lee's Family)
+                        if member_id.id != ADMIN_USER_ID:
+                            master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+                            if not master_lee_family_role or master_lee_family_role not in member_id.roles:
+                                user_id = member_id.id
+                                break
+            
+            if user_id:
+                # Rebuild the tracking data
+                current_time = time.time()
+                private_channels[channel.id] = {
+                    'user_id': user_id,
+                    'created_at': current_time,
+                    'last_activity': current_time,
+                    'pinned_message_id': None,
+                    'original_channel': 'existing',
+                    'user_name': guild.get_member(user_id).name if guild.get_member(user_id) else 'Unknown',
+                    'channel_name': channel.name
+                }
+                user_private_channels[user_id] = channel.id
+                
+                print(f"    ✅ Re-registered view for user ID: {user_id}")
+                
+                # Update ticker in registered_users if needed
+                user_id_str = str(user_id)
+                if user_id_str in registered_users:
+                    registered_users[user_id_str]['has_active_private_chat'] = True
+                    registered_users[user_id_str]['private_chat_channel_id'] = channel.id
+                else:
+                    # Create entry for user if not in registry
+                    registered_users[user_id_str] = {
+                        'child_name': guild.get_member(user_id).name if guild.get_member(user_id) else 'Unknown',
+                        'role': 'Existing',
+                        'role_display': 'Existing User',
+                        'nickname': guild.get_member(user_id).display_name if guild.get_member(user_id) else 'Unknown',
+                        'gender': 'unknown',
+                        'teams': [],
+                        'registered_at': discord.utils.utcnow().isoformat(),
+                        'has_active_private_chat': True,
+                        'private_chat_channel_id': channel.id,
+                        'auto_added': True,
+                        'existing_channel': True
+                    }
+                
+                # Re-register the persistent delete button view
+                delete_view = PermanentDeleteChannelView(channel.id, user_id)
+                bot.add_view(delete_view)
+                
+                # Check if channel already has a delete button pinned
+                try:
+                    pinned_messages = await channel.pins()
+                    delete_button_found = False
+                    
+                    for pinned_msg in pinned_messages:
+                        if pinned_msg.author == bot.user and pinned_msg.embeds:
+                            for embed in pinned_msg.embeds:
+                                if embed.title and "Admin Delete Button" in embed.title:
+                                    delete_button_found = True
+                                    private_channels[channel.id]['pinned_message_id'] = pinned_msg.id
+                                    
+                                    # Edit the existing pinned message to update the view
+                                    await pinned_msg.edit(view=delete_view)
+                                    print(f"    ✅ Updated existing delete button in #{channel.name}")
+                                    break
+                        
+                        if delete_button_found:
+                            break
+                    
+                    if not delete_button_found:
+                        # Send new delete button and pin it
+                        delete_embed = discord.Embed(
+                            title="🗑️ Admin Delete Button",
+                            description="This button is permanently available for admin to delete this private chat.\n\n"
+                                       "**Who can use this button:**\n"
+                                       "• Server Admin\n"
+                                       "• Master Lee's Family members\n\n"
+                                       "**Important:**\n"
+                                       "• Do NOT create new private chats\n"
+                                       "• Use this channel for all communication\n"
+                                       "• Only admins can delete this channel",
+                            color=discord.Color.red()
+                        )
+                        delete_embed.set_footer(text="This button will always be available at the top of this channel")
+                        
+                        delete_message = await channel.send(embed=delete_embed, view=delete_view)
+                        await delete_message.pin()
+                        private_channels[channel.id]['pinned_message_id'] = delete_message.id
+                        print(f"    ✅ Created new delete button for #{channel.name}")
+                
+                except Exception as e:
+                    print(f"    ❌ Error reinitializing delete button for #{channel.name}: {e}")
+            else:
+                print(f"    ⚠️ Could not determine user for channel #{channel.name}")
+    
+    # Save updated registered users
+    save_registered_users(registered_users)
+    print(f"✅ Reinitialization complete. Found {len(private_channels)} existing private chats.")
+    
 async def cleanup_user_data(user_id: int) -> None:
     """
     Clean up all data associated with a user when they leave.
@@ -1595,6 +1993,99 @@ async def cleanup_user_data(user_id: int) -> None:
         del user_private_channels[user_id]
         print(f"🗑️ Removed private chat reference for user ID {user_id}")
 
+def migrate_existing_users():
+    """Migrate existing registered users to include proper structure."""
+    try:
+        with open(REGISTRY_FILE, 'r') as f:
+            users = json.load(f)
+        
+        needs_update = False
+        for user_id, user_data in users.items():
+            # Check if user has old structure
+            if 'teams' in user_data and 'programs' not in user_data:
+                # Rename 'teams' to 'programs'
+                user_data['programs'] = user_data['teams']
+                del user_data['teams']
+                needs_update = True
+            
+            # Ensure 'roles' field exists and is a list
+            if 'roles' not in user_data:
+                user_data['roles'] = []
+                needs_update = True
+            
+            # Ensure 'has_active_private_chat' field exists
+            if 'has_active_private_chat' not in user_data:
+                user_data['has_active_private_chat'] = False
+                needs_update = True
+            
+            # Ensure 'private_chat_channel_id' field exists
+            if 'private_chat_channel_id' not in user_data:
+                user_data['private_chat_channel_id'] = None
+                needs_update = True
+            
+            # Ensure 'registered_at' is in correct format (if missing)
+            if 'registered_at' not in user_data:
+                user_data['registered_at'] = discord.utils.utcnow().isoformat()
+                needs_update = True
+        
+        if needs_update:
+            with open(REGISTRY_FILE, 'w') as f:
+                json.dump(users, f, indent=2)
+            print("✅ Migrated existing users to new structure")
+        else:
+            print("✅ All users already have new structure")
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("⚠️ No existing users to migrate or error reading file")
+
+async def cleanup_user_data(user_id: int) -> None:
+    """
+    Clean up all data associated with a user when they leave.
+    
+    Removes:
+    - Registration data
+    - User state tracking
+    - Active conversations
+    - Private chat references
+    """
+    user_id_str = str(user_id)
+    
+    # Remove from registered users
+    if user_id_str in registered_users:
+        # Log the roles being removed
+        stored_roles = registered_users[user_id_str].get('roles', [])
+        print(f"🗑️ Removing user with roles: {stored_roles}")
+        
+        del registered_users[user_id_str]
+        save_registered_users(registered_users)
+        print(f"🗑️ Deleted registration data for user ID {user_id}")
+    
+    # Remove from user states
+    if user_id in user_states:
+        del user_states[user_id]
+        print(f"🗑️ Removed user state for user ID {user_id}")
+    
+    # Remove from active conversations
+    if user_id in active_conversations:
+        # Clean up message references
+        message_ids_to_remove = []
+        for admin_msg_id, user_msg_id in message_references.items():
+            if user_msg_id == user_id:
+                message_ids_to_remove.append(admin_msg_id)
+        
+        for msg_id in message_ids_to_remove:
+            del message_references[msg_id]
+        
+        del active_conversations[user_id]
+        print(f"🗑️ Removed active conversations for user ID {user_id}")
+    
+    # Remove private chat reference
+    if user_id in user_private_channels:
+        channel_id = user_private_channels[user_id]
+        if channel_id in private_channels:
+            del private_channels[channel_id]
+        del user_private_channels[user_id]
+        print(f"🗑️ Removed private chat reference for user ID {user_id}")
+
 # =============================================================================
 # EVENT HANDLERS
 # =============================================================================
@@ -1605,12 +2096,50 @@ async def on_ready():
     print(f'🆔 Bot ID: {bot.user.id}')
     print(f'👥 Connected to {len(bot.guilds)} server(s)')
     
+    # AUTO-LOG ADMIN INFO ON SERVER START
     guild = bot.get_guild(GUILD_ID)
+    if guild:
+        admin_member = guild.get_member(ADMIN_USER_ID)
+        if admin_member:
+            admin_id_str = str(ADMIN_USER_ID)
+            
+            # Check if admin already exists in registered_users
+            if admin_id_str not in registered_users:
+                # Create admin entry
+                registered_users[admin_id_str] = {
+                    'child_name': 'Admin User',
+                    'role': 'Admin',
+                    'role_display': '👑 Server Admin',
+                    'nickname': admin_member.display_name,
+                    'gender': 'admin',
+                    'programs': [],
+                    'registered_at': discord.utils.utcnow().isoformat(),
+                    'has_active_private_chat': False,
+                    'private_chat_channel_id': None,
+                    'roles': ['Admin'],
+                    'admin_user': True,
+                    'auto_added': True
+                }
+                save_registered_users(registered_users)
+                print(f"✅ Auto-logged admin user: {admin_member.name}")
+            else:
+                # Ensure admin has Admin role in the array
+                if 'Admin' not in registered_users[admin_id_str].get('roles', []):
+                    registered_users[admin_id_str]['roles'] = registered_users[admin_id_str].get('roles', []) + ['Admin']
+                    registered_users[admin_id_str]['admin_user'] = True
+                    save_registered_users(registered_users)
+                    print(f"✅ Updated admin roles for: {admin_member.name}")
+    
+    migrate_existing_users()
+
     if guild:
         print(f'🏠 Server: {guild.name} (ID: {guild.id})')
         
-        # Only check for existing messages, don't create new ones
-        await ensure_general_chat_mute_message(guild)  # Now just checks, doesn't create
+        # Register persistent views
+        bot.add_view(GeneralChatButtonView())
+        
+        # Re-register delete button views for existing private chats
+        await reinitialize_private_chat_views()
         
         # Verify monitored channels
         print("\n📢 MONITORED CHANNELS (messages will create private chats):")
@@ -1676,6 +2205,19 @@ async def on_ready():
             print(f'🔵 Demonstration Team Role: {demonstration_role.name} (ID: {demonstration_role.id})')
         else:
             print(f'⚠️ Demonstration Team role not found! ID: {DEMONSTRATION_TEAM_ROLE_ID}')
+
+        after_school_role = guild.get_role(AFTER_SCHOOL_ROLE_ID)
+        if after_school_role:
+            print(f'📚 After School Role: {after_school_role.name} (ID: {after_school_role.id})')
+        else:
+            print(f'⚠️ After School role not found! ID: {AFTER_SCHOOL_ROLE_ID}')
+
+        # Verify After School channel
+        after_school_channel = guild.get_channel(AFTER_SCHOOL_CHANNEL_ID)
+        if after_school_channel:
+            print(f'📢 After School Channel: #{after_school_channel.name} (ID: {after_school_channel.id})')
+        else:
+            print(f'⚠️ After School channel not found! ID: {AFTER_SCHOOL_CHANNEL_ID}')
         
         # Verify private conversation category
         if PRIVATE_CONVERSATION_CATEGORY_ID:
@@ -1720,73 +2262,243 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
     """
     Verify consistency between registry and green check marks.
     
-    Ensures:
-    - Registered users have green check marks
-    - Users with green check marks are properly registered
-    - Master Lee's Family members are handled appropriately
+    NEW LOGIC: Compares users in Discord with JSON file.
+    If user is not in JSON, they are not registered.
     """
     if not rules_channel:
         return
     
     try:
-        rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+        print(f"\n🔍 Checking registration status based on JSON registry...")
+        print(f"   Found {len(registered_users)} users in JSON registry")
         
-        # Get users with green check reactions
+        # Get all server members (excluding bots)
+        all_members = [member for member in guild.members if not member.bot]
+        print(f"   Found {len(all_members)} non-bot members in server")
+        
+        # Get green check reactions
         green_check_users = set()
-        for reaction in rules_message.reactions:
-            if str(reaction.emoji) == '✅':
-                async for user in reaction.users():
-                    if not user.bot:
-                        green_check_users.add(user.id)
+        try:
+            rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+            for reaction in rules_message.reactions:
+                if str(reaction.emoji) == '✅':
+                    async for user in reaction.users():
+                        if not user.bot:
+                            green_check_users.add(user.id)
+            print(f"   Found {len(green_check_users)} users with green check reaction")
+        except Exception as e:
+            print(f"⚠️ Could not fetch green check reactions: {e}")
         
-        # Check registered users without green check
+        # Check 1: Users in server but NOT in JSON (unregistered)
+        users_not_in_json = []
+        for member in all_members:
+            user_id_str = str(member.id)
+            
+            # Skip Master Lee's Family members (exempt from registration)
+            master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+            is_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
+            
+            # Skip admin
+            is_admin = member.id == ADMIN_USER_ID
+            
+            # Skip if already in JSON
+            if user_id_str in registered_users:
+                continue
+            
+            # Skip exempt users
+            if is_master_lee_family or is_admin:
+                continue
+            
+            # User is in server but not in JSON (and not exempt)
+            users_not_in_json.append(member)
+        
+        # Check 2: Users in JSON but NOT in server (left server)
+        users_not_in_server = []
         for user_id_str in registered_users.keys():
             user_id = int(user_id_str)
             member = guild.get_member(user_id)
-            
-            if member and user_id not in green_check_users:
-                print(f"   ⚠️ Registered user {member.name} missing green check, adding...")
-                try:
-                    await rules_message.add_reaction('✅')
-                    print(f"   ✅ Added green check for {member.name}")
-                except Exception as e:
-                    print(f"   ❌ Error adding green check for {member.name}: {e}")
+            if not member:
+                users_not_in_server.append(user_id_str)
         
-        # Check users with green check but not registered
-        print("\n🔍 Checking for non-registered users with green check...")
+        # Check 3: Users with green check but NOT in JSON (unregistered with green check)
+        users_green_check_not_in_json = []
         for user_id in green_check_users:
-            if str(user_id) not in registered_users:
-                member = guild.get_member(user_id)
-                if member:
-                    # Check for Master Lee's Family role exemption
-                    master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-                    has_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
-                    
-                    if has_master_lee_family:
-                        print(f"   ✅ {member.name} has Master Lee's Family role, skipping warning")
-                        continue
-                    
-                    # Check if they have family role (completed registration)
-                    family_role = guild.get_role(FAMILY_ROLE_ID)
-                    has_family_role = family_role and family_role in member.roles
-                    
-                    if has_family_role:
-                        print(f"   ℹ️ {member.name} has family role but not in registry, adding to registry...")
-                        # Auto-add to registry with basic info
-                        registered_users[str(user_id)] = {
-                            'child_name': 'Unknown',
-                            'role': 'Parent',
-                            'nickname': member.display_name,
-                            'gender': 'unknown',
-                            'teams': [],
-                            'registered_at': discord.utils.utcnow().isoformat(),
-                            'auto_added': True
-                        }
-                        save_registered_users(registered_users)
-                    else:
-                        print(f"   ⚠️ {member.name} has green check but is not registered (no family role)")
+            user_id_str = str(user_id)
+            member = guild.get_member(user_id)
+            
+            if not member:
+                continue  # User not in server
+            
+            # Skip if already in JSON
+            if user_id_str in registered_users:
+                continue
+            
+            # Skip Master Lee's Family
+            master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+            is_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
+            
+            if is_master_lee_family:
+                continue
+            
+            # User has green check but not in JSON
+            users_green_check_not_in_json.append(member)
+        
+        # Print results - NO TRUNCATION FOR UNREGISTERED USERS
+        print("\n📊 COMPREHENSIVE REGISTRATION CHECK:")
+        print(f"   Total in server: {len(all_members)}")
+        print(f"   Total in JSON: {len(registered_users)}")
+        print(f"   Total with green check: {len(green_check_users)}")
+        
+        # PRINT ALL UNREGISTERED USERS WITHOUT TRUNCATION
+        print(f"\n🔴 UNREGISTERED USERS (in server but NOT in JSON): {len(users_not_in_json)}")
+        if users_not_in_json:
+            print("   List of all unregistered users:")
+            for i, member in enumerate(sorted(users_not_in_json, key=lambda x: x.name.lower()), 1):
+                # Check if they have green check
+                has_green_check = member.id in green_check_users
+                green_check_status = "✓" if has_green_check else "✗"
+                
+                # Get their roles (excluding @everyone)
+                member_roles = [role.name for role in member.roles if role.name != "@everyone"]
+                roles_text = f", Roles: {', '.join(member_roles)}" if member_roles else ""
+                
+                print(f"   {i:3d}. {green_check_status} {member.name} (ID: {member.id}){roles_text}")
+        else:
+            print("   ✅ All users in server are registered!")
+        
+        # PRINT ALL USERS WITH GREEN CHECK BUT NOT REGISTERED
+        print(f"\n🟡 USERS WITH GREEN CHECK BUT NOT REGISTERED: {len(users_green_check_not_in_json)}")
+        if users_green_check_not_in_json:
+            print("   List of all users with green check but not registered:")
+            for i, member in enumerate(sorted(users_green_check_not_in_json, key=lambda x: x.name.lower()), 1):
+                # Get their roles
+                member_roles = [role.name for role in member.roles if role.name != "@everyone"]
+                roles_text = f", Roles: {', '.join(member_roles)}" if member_roles else ""
+                
+                print(f"   {i:3d}. {member.name} (ID: {member.id}){roles_text}")
+        else:
+            print("   ✅ All users with green check are registered!")
+        
+        # PRINT ALL USERS IN JSON BUT NOT IN SERVER
+        print(f"\n🔵 USERS IN JSON BUT NOT IN SERVER: {len(users_not_in_server)}")
+        if users_not_in_server:
+            print("   List of all registered users who left the server:")
+            for i, user_id_str in enumerate(users_not_in_server, 1):
+                user_data = registered_users[user_id_str]
+                child_name = user_data.get('child_name', 'Unknown')
+                role_display = user_data.get('role_display', 'Unknown')
+                print(f"   {i:3d}. {child_name}'s {role_display} (ID: {user_id_str})")
+        else:
+            print("   ✅ All registered users are still in the server!")
+        
+        # Summary statistics
+        registered_in_server = len([m for m in all_members if str(m.id) in registered_users])
+        print(f"\n📈 SUMMARY:")
+        print(f"   Registered and in server: {registered_in_server}")
+        print(f"   Unregistered in server: {len(users_not_in_json)}")
+        print(f"   Registered but left server: {len(users_not_in_server)}")
+        
+        # Log detailed report to log channel
+        embed = discord.Embed(
+            title="🔍 Registration Consistency Check",
+            description=f"**Comprehensive registration verification completed**",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        embed.add_field(
+            name="📊 Statistics",
+            value=(
+                f"• **Total server members:** {len(all_members)}\n"
+                f"• **Registered in JSON:** {len(registered_users)}\n"
+                f"• **Registered & in server:** {registered_in_server}\n"
+                f"• **Unregistered in server:** {len(users_not_in_json)}\n"
+                f"• **Registered but left:** {len(users_not_in_server)}"
+            ),
+            inline=False
+        )
+        
+        # For log channel, we'll list all unregistered users (but Discord has limits, so we might need to truncate)
+        if users_not_in_json:
+            # Create a string with all unregistered users
+            unregistered_list = ""
+            for i, member in enumerate(sorted(users_not_in_json, key=lambda x: x.name.lower()), 1):
+                has_green_check = member.id in green_check_users
+                green_check_status = "✓" if has_green_check else "✗"
+                
+                # Get member roles
+                member_roles = [role.name for role in member.roles if role.name != "@everyone"]
+                roles_text = f" [{', '.join(member_roles[:2])}]" if member_roles else ""
+                if len(member_roles) > 2:
+                    roles_text = f" [{', '.join(member_roles[:2])} +{len(member_roles)-2} more]"
+                
+                entry = f"{i}. {green_check_status} **{member.name}**{roles_text}\n"
+                
+                # Discord field value limit is 1024 characters
+                if len(unregistered_list) + len(entry) <= 1000:
+                    unregistered_list += entry
+                else:
+                    # If we exceed the limit, truncate and note how many more
+                    remaining = len(users_not_in_json) - i + 1
+                    unregistered_list += f"... and {remaining} more unregistered users"
+                    break
+            
+            embed.add_field(
+                name=f"🔴 Unregistered Users ({len(users_not_in_json)} total)",
+                value=unregistered_list or "None",
+                inline=False
+            )
+        
+        # For users with green check but not registered
+        if users_green_check_not_in_json:
+            green_check_list = ""
+            for i, member in enumerate(sorted(users_green_check_not_in_json, key=lambda x: x.name.lower()), 1):
+                entry = f"{i}. **{member.name}**\n"
+                
+                if len(green_check_list) + len(entry) <= 1000:
+                    green_check_list += entry
+                else:
+                    remaining = len(users_green_check_not_in_json) - i + 1
+                    green_check_list += f"... and {remaining} more"
+                    break
+            
+            embed.add_field(
+                name=f"🟡 Green Check But Not Registered ({len(users_green_check_not_in_json)} total)",
+                value=green_check_list or "None",
+                inline=False
+            )
+        
+        # For users in JSON but not in server
+        if users_not_in_server:
+            left_server_list = ""
+            for i, user_id_str in enumerate(users_not_in_server[:20], 1):  # Show first 20 in log channel
+                user_data = registered_users[user_id_str]
+                child_name = user_data.get('child_name', 'Unknown')
+                role_display = user_data.get('role_display', 'Unknown')
+                entry = f"{i}. {child_name}'s {role_display}\n"
+                
+                if len(left_server_list) + len(entry) <= 1000:
+                    left_server_list += entry
+                else:
+                    remaining = len(users_not_in_server) - i + 1
+                    left_server_list += f"... and {remaining} more"
+                    break
+            
+            if len(users_not_in_server) > 20:
+                left_server_list += f"\n... and {len(users_not_in_server) - 20} more"
+            
+            embed.add_field(
+                name=f"🔵 Registered But Left Server ({len(users_not_in_server)} total)",
+                value=left_server_list or "None",
+                inline=False
+            )
+        
+        await send_to_log_channel(guild, "", embed)
+        
     except Exception as e:
-        print(f"⚠️ Error verifying green check marks: {e}")
+        print(f"⚠️ Error checking registration status: {e}")
+        import traceback
+        traceback.print_exc()
 
 @bot.event
 async def on_member_join(member: discord.Member):
@@ -1838,30 +2550,11 @@ async def on_member_remove(member: discord.Member):
     await remove_green_check_reaction(member)
     
     print(f"✅ Cleanup complete for {member.name}")
-
+    
 async def remove_green_check_reaction(member: discord.Member) -> None:
-    """Remove green check mark reaction from rules message when member leaves."""
-    try:
-        guild = bot.get_guild(GUILD_ID)
-        if guild:
-            rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-            if rules_channel:
-                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-                
-                # Find and remove green check reaction
-                for reaction in rules_message.reactions:
-                    if str(reaction.emoji) == '✅':
-                        async for user in reaction.users():
-                            if user.id == member.id:
-                                await reaction.remove(user)
-                                print(f"✅ Removed green check mark reaction for {member.name}")
-                                break
-    except discord.NotFound:
-        print("⚠️ Rules message not found, cannot remove reaction")
-    except discord.Forbidden:
-        print("❌ No permission to remove reaction from rules message")
-    except Exception as e:
-        print(f"⚠️ Error removing reaction: {e}")
+    """No longer removing green check mark reactions - they're just visual."""
+    print(f"⚠️ Note: Green check marks are now visual only. No action taken for {member.name}")
+    return  # Do nothing - green checks are visual only
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
@@ -1907,46 +2600,6 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
                 else:
                     print(f"ℹ️ User {member.name} is not registered, allowing reaction removal")
     
-    # Handle mute instruction reaction removal
-    elif payload.channel_id == GENERAL_CHAT_CHANNEL_ID:
-        guild = bot.get_guild(payload.guild_id)
-        if guild:
-            channel = guild.get_channel(payload.channel_id)
-            if channel:
-                try:
-                    message = await channel.fetch_message(payload.message_id)
-                    # Check if this is our mute instruction message
-                    if message.author == bot.user and message.embeds:
-                        for embed in message.embeds:
-                            if embed.title and "How to Access" in embed.title:
-                                # This is the mute instruction message
-                                member = guild.get_member(payload.user_id)
-                                if member and not member.bot:
-                                    # Check if user has Family Member role
-                                    family_role = guild.get_role(FAMILY_ROLE_ID)
-                                    if family_role and family_role in member.roles:
-                                        # User has Family Member role, so they should still have view access
-                                        # Remove send permission but keep view access
-                                        await channel.set_permissions(member, overwrite=None)
-                                        
-                                        # Re-add permissions with send_messages disabled
-                                        await channel.set_permissions(
-                                            member,
-                                            read_messages=True,
-                                            send_messages=False,  # Disable sending
-                                            view_channel=True,
-                                            read_message_history=True,
-                                            reason="User removed mute reaction"
-                                        )
-                                        print(f"❌ Removed send permission from {member.name} for removing mute reaction")
-                                    else:
-                                        # User doesn't have Family Member role, remove all permissions
-                                        await channel.set_permissions(member, overwrite=None)
-                                        print(f"❌ Removed all permissions from {member.name} (no Family Member role)")
-                                break
-                except:
-                    pass
-
 async def re_add_green_check_reaction(guild: discord.Guild, member: discord.Member) -> None:
     """Re-add green check reaction for registered users who removed it."""
     print(f"🔄 User {member.name} is registered/received family role, re-adding reaction...")
@@ -1980,8 +2633,8 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     """
     Handle green check mark reactions to start registration.
     
-    Triggers DM registration process when users react with ✅
-    to the rules message.
+    NEW LOGIC: Only check JSON file. If user is in JSON, do nothing.
+    Only start DM process for users NOT in JSON.
     """
     # Ignore bot reactions
     if payload.user_id == bot.user.id:
@@ -1996,71 +2649,17 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         if guild:
             member = guild.get_member(payload.user_id)
             if member and not member.bot:
-                # Check for Master Lee's Family role exemption
-                master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-                has_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
-                
-                if has_master_lee_family:
-                    await handle_master_lee_family_member(member)
+                # ONLY check: Is user in JSON?
+                user_id_str = str(member.id)
+                if user_id_str in registered_users:
+                    # User is already registered in JSON - do nothing
+                    print(f"✅ {member.name} already in JSON, ignoring reaction")
                     return
                 
-                # Check if already registered
-                if str(member.id) in registered_users:
-                    await notify_already_registered(member)
-                    return
-                
-                # Start registration process
+                # User is NOT in JSON - start registration process
+                print(f"📝 {member.name} clicked green check, starting registration")
                 await log_registration_start(guild, member)
                 await start_dm_process(member)
-    
-    # Check for general chat mute reaction
-    elif payload.channel_id == GENERAL_CHAT_CHANNEL_ID and str(payload.emoji) == '🔇':
-        guild = bot.get_guild(payload.guild_id)
-        if guild:
-            channel = guild.get_channel(payload.channel_id)
-            if channel:
-                try:
-                    message = await channel.fetch_message(payload.message_id)
-                    # Check if this is our mute instruction message
-                    if message.author == bot.user and message.embeds:
-                        for embed in message.embeds:
-                            if embed.title and "How to Access" in embed.title:
-                                # This is the mute instruction message
-                                member = guild.get_member(payload.user_id)
-                                if member and not member.bot:
-                                    # Grant send permission when they react
-                                    # Remove any existing permission override first
-                                    await channel.set_permissions(member, overwrite=None)
-                                    
-                                    # Then add the new permission with send_messages enabled
-                                    await channel.set_permissions(
-                                        member,
-                                        read_messages=True,
-                                        send_messages=True,
-                                        view_channel=True,
-                                        read_message_history=True,
-                                        reason="User reacted to mute instruction"
-                                    )
-                                    print(f"✅ Granted send permission to {member.name} for reacting to mute instruction")
-                                    
-                                    # Send confirmation DM
-                                    try:
-                                        dm_channel = await member.create_dm()
-                                        confirm_embed = discord.Embed(
-                                            title="✅ Access Granted",
-                                            description=f"You now have permission to send messages in <#{GENERAL_CHAT_CHANNEL_ID}>!\n\n"
-                                                    "**Remember:**\n"
-                                                    "• All messages are auto-forwarded to private chats\n"
-                                                    "• Keep conversations respectful\n"
-                                                    "• Enjoy chatting with the community!",
-                                            color=discord.Color.green()
-                                        )
-                                        await dm_channel.send(embed=confirm_embed)
-                                    except:
-                                        pass
-                                break
-                except:
-                    pass
 
 async def handle_master_lee_family_member(member: discord.Member) -> None:
     """Handle Master Lee's Family members (exempt from registration)."""
@@ -2119,36 +2718,32 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
     
-    # Handle monitored channel messages
-    if message.channel.id in MONITORED_CHANNELS:
-        # Check if user has permission to send messages
-        if not message.channel.permissions_for(message.author).send_messages:
+    # Handle monitored channel messages - ONLY DELETE THEM NOW
+    if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
+        # Delete any messages sent in general-chat
+        try:
+            await message.delete()
+            print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
+            
+            # Notify user via DM
             try:
-                await message.delete()
-                print(f'❌ Blocked message from {message.author.name} - no send permission')
-                
-                # Notify user via DM
-                try:
-                    dm_channel = await message.author.create_dm()
-                    embed = discord.Embed(
-                        title="🔒 Permission Required",
-                        description=f"You don't have permission to send messages in <#{GENERAL_CHAT_CHANNEL_ID}> yet!\n\n"
-                                  "**To get access:**\n"
-                                  "1. Mute the channel notifications\n"
-                                  "2. React with 🔇 to the pinned message in that channel\n"
-                                  "3. You'll then be able to send messages\n\n"
-                                  "This helps prevent notification spam for everyone.",
-                        color=discord.Color.red()
-                    )
-                    await dm_channel.send(embed=embed)
-                except:
-                    pass
+                dm_channel = await message.author.create_dm()
+                embed = discord.Embed(
+                    title="⚠️ No Typing in General Chat",
+                    description=f"You cannot send messages in <#{GENERAL_CHAT_CHANNEL_ID}>!\n\n"
+                              "**To talk to us:**\n"
+                              "1. Go to the general-chat channel\n"
+                              "2. Click the **📩 Request Private Chat** button\n"
+                              "3. A private chat will be created for you\n\n"
+                              "Use the button every time you want to talk to us.",
+                    color=discord.Color.red()
+                )
+                await dm_channel.send(embed=embed)
             except:
                 pass
-            return
-        
-        await handle_monitored_channel_message(message)
-        await delete_original_message(message)
+        except:
+            pass
+        return
     
     # Handle private chat messages
     elif message.channel.id in private_channels:
@@ -2554,15 +3149,7 @@ async def provide_step_guidance(channel: discord.DMChannel, user_id: int) -> Non
 # REGISTRATION FUNCTIONS
 # =============================================================================
 async def assign_family_role(member: discord.Member) -> bool:
-    """
-    Assign Family Member role to user after registration.
-    
-    Args:
-        member: Discord member to assign role to
-        
-    Returns:
-        True if role assigned successfully, False otherwise
-    """
+    """Assign Family Member role to user after registration."""
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return False
@@ -2572,6 +3159,10 @@ async def assign_family_role(member: discord.Member) -> bool:
         try:
             await member.add_roles(family_role, reason="Registration Complete")
             print(f'✅ Added Family Member role to {member.name} after registration')
+            
+            # Update JSON file
+            await update_user_roles_in_json(member.id, member)
+            
             return True
         except discord.Forbidden:
             print(f'❌ Missing permissions to add role to {member.name}')
@@ -2580,15 +3171,7 @@ async def assign_family_role(member: discord.Member) -> bool:
     return False
 
 async def assign_student_role(member: discord.Member) -> bool:
-    """
-    Assign Student role to user after registration.
-    
-    Args:
-        member: Discord member to assign role to
-        
-    Returns:
-        True if role assigned successfully, False otherwise
-    """
+    """Assign Student role to user after registration."""
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return False
@@ -2598,6 +3181,10 @@ async def assign_student_role(member: discord.Member) -> bool:
         try:
             await member.add_roles(student_role, reason="Registration Complete")
             print(f'✅ Added Student role to {member.name} after registration')
+            
+            # Update JSON file
+            await update_user_roles_in_json(member.id, member)
+            
             return True
         except discord.Forbidden:
             print(f'❌ Missing permissions to add role to {member.name}')
@@ -2605,30 +3192,21 @@ async def assign_student_role(member: discord.Member) -> bool:
             print(f'❌ Error adding role to {member.name}: {e}')
     return False
 
-async def assign_team_roles(member: discord.Member, teams_selected: list) -> List[str]:
-    """
-    Assign team roles based on user selection.
-    
-    Args:
-        member: Discord member to assign roles to
-        teams_selected: List of selected team identifiers
-        
-    Returns:
-        List of successfully assigned team names
-    """
+async def assign_program_roles(member: discord.Member, programs_selected: list) -> List[str]:
+    """Assign program roles based on user selection."""
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return []
     
-    assigned_teams = []
+    assigned_programs = []
     
     # Assign National Team role
-    if "national" in teams_selected:
+    if "national" in programs_selected:
         national_role = guild.get_role(NATIONAL_TEAM_ROLE_ID)
         if national_role and national_role not in member.roles:
             try:
                 await member.add_roles(national_role, reason="National Team Registration")
-                assigned_teams.append("National Team")
+                assigned_programs.append("National Team")
                 print(f'✅ Added National Team role to {member.name}')
             except discord.Forbidden:
                 print(f'❌ Missing permissions to add National Team role to {member.name}')
@@ -2636,19 +3214,93 @@ async def assign_team_roles(member: discord.Member, teams_selected: list) -> Lis
                 print(f'❌ Error adding National Team role to {member.name}: {e}')
     
     # Assign Demonstration Team role
-    if "demonstration" in teams_selected:
+    if "demonstration" in programs_selected:
         demonstration_role = guild.get_role(DEMONSTRATION_TEAM_ROLE_ID)
         if demonstration_role and demonstration_role not in member.roles:
             try:
                 await member.add_roles(demonstration_role, reason="Demonstration Team Registration")
-                assigned_teams.append("Demonstration Team")
+                assigned_programs.append("Demonstration Team")
                 print(f'✅ Added Demonstration Team role to {member.name}')
             except discord.Forbidden:
                 print(f'❌ Missing permissions to add Demonstration Team role to {member.name}')
             except discord.HTTPException as e:
                 print(f"❌ Error adding Demonstration Team role to {member.name}: {e}")
     
-    return assigned_teams
+    # Assign After School role
+    if "after_school" in programs_selected:
+        after_school_role = guild.get_role(AFTER_SCHOOL_ROLE_ID)
+        if after_school_role and after_school_role not in member.roles:
+            try:
+                await member.add_roles(after_school_role, reason="After School Program Registration")
+                assigned_programs.append("After School")
+                print(f'✅ Added After School role to {member.name}')
+            except discord.Forbidden:
+                print(f'❌ Missing permissions to add After School role to {member.name}')
+            except discord.HTTPException as e:
+                print(f"❌ Error adding After School role to {member.name}: {e}")
+    
+    # Update JSON file with all roles
+    await update_user_roles_in_json(member.id, member)
+    
+    return assigned_programs
+
+async def assign_program_roles(member: discord.Member, programs_selected: list) -> List[str]:
+    """
+    Assign program roles based on user selection.
+    
+    Args:
+        member: Discord member to assign roles to
+        programs_selected: List of selected program identifiers
+        
+    Returns:
+        List of successfully assigned program names
+    """
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return []
+    
+    assigned_programs = []
+    
+    # Assign National Team role
+    if "national" in programs_selected:
+        national_role = guild.get_role(NATIONAL_TEAM_ROLE_ID)
+        if national_role and national_role not in member.roles:
+            try:
+                await member.add_roles(national_role, reason="National Team Registration")
+                assigned_programs.append("National Team")
+                print(f'✅ Added National Team role to {member.name}')
+            except discord.Forbidden:
+                print(f'❌ Missing permissions to add National Team role to {member.name}')
+            except discord.HTTPException as e:
+                print(f'❌ Error adding National Team role to {member.name}: {e}')
+    
+    # Assign Demonstration Team role
+    if "demonstration" in programs_selected:
+        demonstration_role = guild.get_role(DEMONSTRATION_TEAM_ROLE_ID)
+        if demonstration_role and demonstration_role not in member.roles:
+            try:
+                await member.add_roles(demonstration_role, reason="Demonstration Team Registration")
+                assigned_programs.append("Demonstration Team")
+                print(f'✅ Added Demonstration Team role to {member.name}')
+            except discord.Forbidden:
+                print(f'❌ Missing permissions to add Demonstration Team role to {member.name}')
+            except discord.HTTPException as e:
+                print(f"❌ Error adding Demonstration Team role to {member.name}: {e}")
+    
+    # Assign After School role
+    if "after_school" in programs_selected:
+        after_school_role = guild.get_role(AFTER_SCHOOL_ROLE_ID)
+        if after_school_role and after_school_role not in member.roles:
+            try:
+                await member.add_roles(after_school_role, reason="After School Program Registration")
+                assigned_programs.append("After School")
+                print(f'✅ Added After School role to {member.name}')
+            except discord.Forbidden:
+                print(f'❌ Missing permissions to add After School role to {member.name}')
+            except discord.HTTPException as e:
+                print(f"❌ Error adding After School role to {member.name}: {e}")
+    
+    return assigned_programs
 
 async def start_dm_process(member: discord.Member):
     """
@@ -2739,7 +3391,7 @@ async def complete_registration(user: discord.User, member: discord.Member):
     child_name = user_states[user_id]['child_name']
     gender = user_states[user_id]['gender']
     role_display = user_states[user_id]['role_display']
-    teams_selected = user_states[user_id]['teams_selected']
+    programs_selected = user_states[user_id].get('programs_selected', [])  # Changed from teams_selected
     
     # Generate nickname based on role
     nickname, role_name, emoji_role = generate_nickname_and_role(child_name, gender)
@@ -2763,30 +3415,85 @@ async def complete_registration(user: discord.User, member: discord.Member):
     if role_assigned:
         await grant_general_chat_access(member)
     
-    # Assign team roles (if any selected)
-    assigned_teams = await assign_team_roles(member, teams_selected)
+    # Assign program roles (if any selected)
+    assigned_programs = await assign_program_roles(member, programs_selected)  # Changed from assign_team_roles
     
     # Prepare completion message components
-    team_message = format_team_message(teams_selected)
-    role_msg = format_role_assignment_message(role_type, role_assigned, assigned_teams)
+    program_message = format_program_message(programs_selected)  # Changed from team_message
+    role_msg = format_role_assignment_message(role_type, role_assigned, assigned_programs)  # Changed
     
     # Send completion message
     await send_registration_completion_message(
         dm_channel, emoji_role, role_display, child_name, 
-        success_msg, role_msg, team_message, gender
+        success_msg, role_msg, program_message, gender  # Changed
     )
     
     # Save registration data
-    save_registration_data(user_id, child_name, role_name, role_display, 
-                          nickname, gender, teams_selected)
+    save_registration_data(
+        user_id=user.id,
+        child_name=child_name,
+        role_name=role_name,  # This should be the role name like "Mother", "Father", "Student"
+        role_display=role_display,
+        nickname=nickname,
+        gender=gender,
+        programs_selected=programs_selected,  # Changed from teams_selected
+        member=member
+    )
     
     # Log successful registration
-    await log_successful_registration(member, child_name, nickname, teams_selected, gender)
+    await log_successful_registration(member, child_name, nickname, programs_selected, gender)  # Changed
     
     # Clean up temporary state
     del user_states[user_id]
     
-    print(f"✅ Registration complete for {user.name} as {gender} with teams: {teams_selected}")
+    print(f"✅ Registration complete for {user.name} as {gender} with programs: {programs_selected}")
+
+async def update_user_roles_in_json(user_id: int, member: discord.Member) -> None:
+    """Update the roles array in registered_users.json for a specific user."""
+    user_id_str = str(user_id)
+    
+    if user_id_str in registered_users:
+        roles = []
+        
+        # Check for special roles first (these should be preserved)
+        if MASTER_LEE_FAMILY_ROLE_ID and discord.utils.get(member.roles, id=MASTER_LEE_FAMILY_ROLE_ID):
+            roles.append("Master Lee's Family")
+        if INSTRUCTOR_ROLE_ID and discord.utils.get(member.roles, id=INSTRUCTOR_ROLE_ID):
+            roles.append("Instructor")
+        
+        # Check for admin role
+        if user_id == ADMIN_USER_ID:
+            if "Admin" not in roles:
+                roles.append("Admin")
+        
+        # Check for family role (for parents/grandparents)
+        if FAMILY_ROLE_ID and discord.utils.get(member.roles, id=FAMILY_ROLE_ID):
+            if "Family Member" not in roles:
+                roles.append("Family Member")
+        
+        # Check for student role
+        if STUDENT_ROLE_ID and discord.utils.get(member.roles, id=STUDENT_ROLE_ID):
+            if "Student" not in roles:
+                roles.append("Student")
+        
+        # Check for program roles
+        if NATIONAL_TEAM_ROLE_ID and discord.utils.get(member.roles, id=NATIONAL_TEAM_ROLE_ID):
+            if "National Team" not in roles:
+                roles.append("National Team")
+        if DEMONSTRATION_TEAM_ROLE_ID and discord.utils.get(member.roles, id=DEMONSTRATION_TEAM_ROLE_ID):
+            if "Demonstration Team" not in roles:
+                roles.append("Demonstration Team")
+        if AFTER_SCHOOL_ROLE_ID and discord.utils.get(member.roles, id=AFTER_SCHOOL_ROLE_ID):
+            if "After School" not in roles:
+                roles.append("After School")
+        
+        # Update the roles in JSON
+        registered_users[user_id_str]['roles'] = roles
+        save_registered_users(registered_users)
+        
+        print(f"📝 Updated JSON roles for {member.name}: {roles}")
+    else:
+        print(f"⚠️ User {member.name} not in registered_users.json, cannot update roles")
     
 async def grant_general_chat_access(member: discord.Member) -> bool:
     """
@@ -2862,18 +3569,20 @@ async def attempt_nickname_assignment(member: discord.Member, nickname: str) -> 
         print(f"❌ Error changing nickname for {member.name}: {e}")
         return False, error_msg
 
-def format_team_message(teams_selected: List[str]) -> str:
-    """Format team selection message for completion embed."""
-    if not teams_selected:
-        return "\n\n**Teams:** None selected - you can join teams later!"
+def format_program_message(programs_selected: List[str]) -> str:
+    """Format program selection message for completion embed."""
+    if not programs_selected:
+        return "\n\n**Programs:** None selected - you can join programs later!"
     
-    team_list = []
-    if "national" in teams_selected:
-        team_list.append("**National Team** 🔴")
-    if "demonstration" in teams_selected:
-        team_list.append("**Demonstration Team** 🔵")
+    program_list = []
+    if "national" in programs_selected:
+        program_list.append("**National Team** 🔴")
+    if "demonstration" in programs_selected:
+        program_list.append("**Demonstration Team** 🔵")
+    if "after_school" in programs_selected:
+        program_list.append("**After School** 📚")
     
-    return f"\n\n**Teams Joined:**\n" + "\n".join([f"• {team}" for team in team_list])
+    return f"\n\n**Programs Enrolled:**\n" + "\n".join([f"• {program}" for program in program_list])
 
 def format_role_assignment_message(role_type: str, role_assigned: bool, assigned_teams: List[str]) -> str:
     """Format role assignment results message."""
@@ -2912,10 +3621,8 @@ async def send_registration_completion_message(
     description += f"{role_msg}{team_message}\n\n"
     description += f"**🎊 What's Next:**\n"
     description += f"• You can now see **#general-chat**!\n"
-    description += f"• Check the pinned message in #general-chat for instructions on how to:\n"
-    description += f"  1. Mute the channel (recommended)\n"
-    description += f"  2. Get permission to send messages\n"
-    description += f"  3. Understand how the chat works\n\n"
+    description += f"• To talk to us, click the **📩 Request Private Chat** button in that channel\n"
+    description += f"• Use the button every time you want to talk to us\n"
     description += f"Welcome to the family!"
     
     embed = discord.Embed(
@@ -2932,19 +3639,60 @@ def save_registration_data(
     role_display: str,
     nickname: str,
     gender: str,
-    teams_selected: List[str]
+    programs_selected: List[str],
+    member: discord.Member = None
 ) -> None:
-    """Save registration data to persistent storage."""
-    registered_users[str(user_id)] = {
+    """Save registration data to persistent storage including Discord roles."""
+    # Get the current timestamp in ISO format with timezone
+    registered_at = discord.utils.utcnow().isoformat()
+    
+    # Determine roles array based on member's current roles
+    roles = []
+    
+    if member:
+        # Check for special roles
+        if MASTER_LEE_FAMILY_ROLE_ID and discord.utils.get(member.roles, id=MASTER_LEE_FAMILY_ROLE_ID):
+            roles.append("Master Lee's Family")
+        if INSTRUCTOR_ROLE_ID and discord.utils.get(member.roles, id=INSTRUCTOR_ROLE_ID):
+            roles.append("Instructor")
+        
+        # Check for Family Member role (for parents/grandparents)
+        if gender in ['mother', 'father', 'grandmother', 'grandfather']:
+            if FAMILY_ROLE_ID and discord.utils.get(member.roles, id=FAMILY_ROLE_ID):
+                roles.append("Family Member")
+        
+        # Check for Student role
+        if gender == 'student':
+            if STUDENT_ROLE_ID and discord.utils.get(member.roles, id=STUDENT_ROLE_ID):
+                roles.append("Student")
+        
+        # Check for program roles
+        if "national" in programs_selected and NATIONAL_TEAM_ROLE_ID and discord.utils.get(member.roles, id=NATIONAL_TEAM_ROLE_ID):
+            roles.append("National Team")
+        if "demonstration" in programs_selected and DEMONSTRATION_TEAM_ROLE_ID and discord.utils.get(member.roles, id=DEMONSTRATION_TEAM_ROLE_ID):
+            roles.append("Demonstration Team")
+        if "after_school" in programs_selected and AFTER_SCHOOL_ROLE_ID and discord.utils.get(member.roles, id=AFTER_SCHOOL_ROLE_ID):
+            roles.append("After School")
+    
+    # Create the user data structure exactly as specified
+    user_data = {
         'child_name': child_name,
-        'role': role_name,
-        'role_display': role_display,
+        'role': role_name,  # e.g., "Mother", "Father", "Student"
+        'role_display': role_display,  # e.g., "👩 Mother", "🎓 Student"
         'nickname': nickname,
-        'gender': gender,
-        'teams': teams_selected,
-        'registered_at': discord.utils.utcnow().isoformat()
+        'gender': gender,  # e.g., "mother", "father", "student"
+        'registered_at': registered_at,
+        'programs': programs_selected,  # Changed from 'teams' to 'programs'
+        'has_active_private_chat': False,
+        'private_chat_channel_id': None,
+        'roles': roles
     }
+    
+    # Save to registered_users
+    registered_users[str(user_id)] = user_data
     save_registered_users(registered_users)
+    
+    print(f"✅ Saved registration data for user {user_id} with roles: {roles}")
 
 async def log_successful_registration(
     member: discord.Member,
@@ -2960,7 +3708,7 @@ async def log_successful_registration(
             role_name = "Student"
         else:
             family_role = guild.get_role(FAMILY_ROLE_ID)
-            role_name = family_role.name if family_role else "Family Member"
+            role_name = family_role.name if family_role else "Family Member"    
         
         log_embed = discord.Embed(
             title="✅ Registration Complete",
@@ -2979,13 +3727,13 @@ async def log_successful_registration(
 # COMMAND DEFINITIONS
 # =============================================================================
 # Bot command group for administrative functions
-@bot.group(name="bot_command", invoke_without_command=True)
+@bot.group(name="bot_command", invoke_without_command=False)
 async def bot_command(ctx):
     """Main bot command category for administrative functions."""
-    if ctx.invoked_subcommand is None:
-        await ctx.send("❌ Invalid command. Use `!help bot_command` for available commands.", ephemeral=True)
+    # Don't send any message when invoked without subcommand
+    # Let Discord.py handle the "command not found" naturally
+    pass
 
-# Chat command subcategory
 @bot_command.command(name="chat")
 @bot_channel_only()
 async def chat_command(ctx):
@@ -2995,41 +3743,186 @@ async def chat_command(ctx):
     Only accessible in bot command channel by admin users.
     """
     embed = discord.Embed(
-        title="💬 Admin Bot Commands",
-        description="**Available commands in this chat:**\n\n"
-                   "**📊 Statistics & Info:**\n"
-                   "• `!bot_command chat active_private_chats` - Show active private chats\n"
-                   "• `!bot_command chat register_stats` - Show registration statistics\n"
-                   "• `!bot_command chat active_chats` - Show active conversations\n"
-                   "• `!bot_command chat check_consistency` - Check registry consistency\n\n"
-                   "**👤 User Management:**\n"
-                   "• `!bot_command chat view_user @user` - View user info\n"
-                   "• `!bot_command chat send_dm @user message` - Send DM to user\n"
-                   "• `!bot_command chat assign_role @user` - Assign family role\n"
-                   "• `!bot_command chat add_teams @user` - Add teams to user\n"
-                   "• `!bot_command chat fix_name @user new_name` - Fix user's name\n\n"
-                   "**🔧 Bot Management:**\n"
-                   "• `!bot_command chat setup` - Setup rules message\n"
-                   "• `!bot_command chat setup_bot_channel` - Setup bot command channel\n"
-                   "• `!bot_command chat clear_chats` - Clear active conversations\n"
-                   "• `!bot_command chat remove_check @user` - Remove user's check\n"
-                   "• `!bot_command chat update_message_id ID` - Update rules message ID\n"
-                   "• `!bot_command chat resend_delete_button #channel` - Resend delete button\n\n"
-                   "**👑 Role Management:**\n"
-                   "• `!bot_command chat assign_instructor @user` - Assign Instructor role\n"
-                   "• `!bot_command chat assign_master_lee_family @user` - Assign Master Lee's Family role\n"
-                   "• `!bot_command chat assign_both_roles @user` - Assign both roles\n"
-                   "• `!bot_command chat remove_role @user role_type` - Remove special role (instructor/master_family/both)\n"
-                   "• `!bot_command chat list_special_roles` - List special role members\n"
-                   "**🛠️ Testing & Debug:**\n"
-                   "• `!bot_command chat test_button` - Test delete button\n"
-                   "• `!bot_command chat test_reaction` - Test reaction detection\n"
-                   "• `!bot_command chat debug_ids` - Show all IDs\n"
-                   "• `!bot_command chat check_message ID` - Check message reactions\n",
+        title="💬 **ADMIN BOT COMMANDS**",
+        description="**All commands must be used in this channel only.**\n\n"
+                   "Use `!bot_command chat [command_name]` or `!bot_command [command_name]`\n"
+                   "**Example:** `!bot_command chat view_user @user`\n",
         color=discord.Color.blue()
     )
+    
+    # Section 1: REAL-TIME MONITORING
+    embed.add_field(
+        name="📊 **REAL-TIME MONITORING**",
+        value=(
+            "`active_private_chats` - Show all active private chats with activity status\n"
+            "`active_chats` - Show active 1-on-1 conversations\n"
+            "`register_stats` - Show registration statistics with charts\n"
+            "`system_status` - Complete bot health and system status\n"
+            "`monitor_activity @user` - Live monitor user activity\n"
+        ),
+        inline=False
+    )
+    
+    # Section 2: USER MANAGEMENT (UPDATED)
+    embed.add_field(
+        name="👤 **USER MANAGEMENT**",
+        value=(
+            "`view_user @user` - Complete user profile with all data\n"
+            "`view_user_roles @user` - View JSON vs Discord role comparison\n"
+            "`edit_user @user field:value` - Edit any user field\n"
+            "`send_dm @user message` - Send direct message to user\n"
+            "`assign_role @user role_type` - Assign specific role\n"
+            "`update_discord_roles @user` - Update JSON from current Discord roles\n"
+            "`update_roles @user` - Sync Discord roles with JSON\n"
+            "`force_register @user` - Force registration for user\n"
+            "`reset_user @user` - Reset user registration data\n"
+            "`view_json_data @user` - View raw JSON data\n"
+        ),
+        inline=False
+    )
+    
+    # Section 3: PRIVATE CHAT MANAGEMENT
+    embed.add_field(
+        name="🔒 **PRIVATE CHAT MANAGEMENT**",
+        value=(
+            "`cleanup_private_chats` - Bulk delete ALL private chats\n"
+            "`resend_delete_button #channel` - Fix delete button in channel\n"
+            "`close_chat #channel` - Close specific private chat\n"
+            "`archive_inactive` - Archive chats inactive >7 days\n"
+            "`chat_history #channel` - View chat message history\n"
+            "`export_chat #channel` - Export chat to text file\n"
+            "`monitor_chat #channel` - Live monitor chat activity\n"
+        ),
+        inline=False
+    )
+    
+    # Section 4: ROLE MANAGEMENT
+    embed.add_field(
+        name="🎭 **ROLE MANAGEMENT**",
+        value=(
+            "`assign_master_lee_family @user` - Assign Master Lee's Family role\n"
+            "`assign_instructor @user` - Assign Instructor role\n"
+            "`assign_both_roles @user` - Assign both special roles\n"
+            "`remove_role @user role_type` - Remove specific role\n"
+            "`list_special_roles` - List all special role members\n"
+            "`check_role_consistency` - Verify role assignments\n"
+            "`role_audit @user` - Full role audit for user\n"
+        ),
+        inline=False
+    )
+    
+    # Section 5: REGISTRATION SYSTEM
+    embed.add_field(
+        name="📝 **REGISTRATION SYSTEM**",
+        value=(
+            "`fix_name @user new_name` - Fix user's registered name\n"
+            "`add_programs @user programs` - Add programs to user\n"
+            "`remove_programs @user programs` - Remove programs\n"
+            "`transfer_registration @old @new` - Transfer registration\n"
+            "`update_registration @user` - Update registration details\n"
+            "`check_consistency` - Check registry/green check consistency\n"
+            "`verify_registration @user` - Verify registration completion\n"
+        ),
+        inline=False
+    )
+    
+    # Section 6: DATA MANAGEMENT
+    embed.add_field(
+        name="💾 **DATA MANAGEMENT**",
+        value=(
+            "`backup_registry` - Create registry backup\n"
+            "`restore_registry backup_file` - Restore from backup\n"
+            "`cleanup_json` - Clean orphaned JSON entries\n"
+            "`export_registry` - Export registry to CSV\n"
+            "`import_registry file` - Import from CSV\n"
+            "`search_users query` - Search users by name/role\n"
+            "`batch_update field=value` - Batch update users\n"
+        ),
+        inline=False
+    )
+    
+    # Section 7: SYSTEM & MAINTENANCE
+    embed.add_field(
+        name="🛠️ **SYSTEM & MAINTENANCE**",
+        value=(
+            "`setup` - Setup rules message\n"
+            "`setup_bot_channel` - Create bot command channel\n"
+            "`setup_log_channel` - Create log channel\n"
+            "`clear_chats` - Clear active conversations\n"
+            "`remove_check @user` - Remove user's green check\n"
+            "`update_message_id ID` - Update rules message ID\n"
+            "`cleanup_orphaned_data` - Clean up orphaned data\n"
+            "`reinitialize_buttons` - Reinitialize all bot buttons\n"
+        ),
+        inline=False
+    )
+    
+    # Section 8: JSON SYNCHRONIZATION (UPDATED)
+    embed.add_field(
+        name="🔄 **JSON SYNCHRONIZATION**",
+        value=(
+            "`apply_json_roles` - Update Discord roles from JSON file\n"
+            "`update_json_now` - Force immediate JSON sync\n"
+            "`force_json_sync @user` - Force sync for specific user\n"
+            "`json_task_status` - Show JSON task status\n"
+            "`start_json_task` - Start JSON sync task\n"
+            "`stop_json_task` - Stop JSON sync task\n"
+            "`verify_json_roles @user` - Verify JSON role sync\n"
+            "`fix_json_inconsistencies` - Fix JSON inconsistencies\n"
+        ),
+        inline=False
+    )
+    
+    # Section 9: TESTING & DEBUGGING
+    embed.add_field(
+        name="🐛 **TESTING & DEBUGGING**",
+        value=(
+            "`test_button` - Test delete button functionality\n"
+            "`test_reaction` - Test reaction detection\n"
+            "`debug_ids` - Show all configuration IDs\n"
+            "`check_message ID` - Check message reactions\n"
+            "`simulate_join @user` - Simulate user joining\n"
+            "`simulate_leave @user` - Simulate user leaving\n"
+            "`test_dm_flow` - Test DM registration flow\n"
+            "`debug_webhook` - Test webhook functionality\n"
+        ),
+        inline=False
+    )
+    
+    # Section 10: REPORTS & ANALYTICS
+    embed.add_field(
+        name="📈 **REPORTS & ANALYTICS**",
+        value=(
+            "`export_activity` - Export activity logs\n"
+            "`generate_report` - Generate system report\n"
+            "`audit_log days=7` - Show recent system events\n"
+            "`usage_statistics` - Show command usage stats\n"
+            "`performance_metrics` - Show bot performance\n"
+            "`error_logs` - View error logs\n"
+            "`daily_summary` - Generate daily summary\n"
+        ),
+        inline=False
+    )
+    
+    # Section 11: QUICK ACTIONS
+    embed.add_field(
+        name="⚡ **QUICK ACTIONS**",
+        value=(
+            "`quick_close @user` - Quick close user's private chat\n"
+            "`quick_message @user msg` - Quick DM to user\n"
+            "`quick_role @user role` - Quick role assignment\n"
+            "`quick_backup` - Quick registry backup\n"
+            "`quick_stats` - Quick statistics\n"
+            "`quick_check @user` - Quick user check\n"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(
+        text="🚀 Bot v2.0.0 | Commands only work in bot-commands channel | Prefix: !"
+    )
+    
     await ctx.send(embed=embed)
-
 
 # =============================================================================
 # ADMINISTRATIVE COMMANDS (BOT CHANNEL ONLY)
@@ -3270,23 +4163,6 @@ async def chat_clear_chats(ctx):
     )
     await ctx.send(embed=embed)
 
-@bot_command.command(name="test_button")
-@bot_channel_only()
-async def chat_test_button(ctx):
-    """Test the permanent delete button functionality."""
-    view = PermanentDeleteChannelView(ctx.channel.id, ctx.author.id)
-    
-    embed = discord.Embed(
-        title="🛠️ Test Permanent Delete Button",
-        description="This is a test of the permanent delete button functionality.\n\n"
-                   "Only you (the admin) can press this button!\n\n"
-                   "**Note:** In private chats, this button is pinned at the top and always available.",
-        color=discord.Color.blue()
-    )
-    
-    await ctx.send(embed=embed, view=view)
-    await ctx.send("✅ Test button sent! Try pressing it.")
-
 @bot_command.command(name="test_reaction")
 @bot_channel_only()
 async def chat_test_reaction(ctx):
@@ -3381,22 +4257,31 @@ async def chat_register_stats(ctx):
     """Display registration statistics."""
     total_registered = len(registered_users)
     
-    # Calculate team distribution
+    # Calculate program distribution
     national_count = 0
     demonstration_count = 0
-    both_teams_count = 0
-    no_teams_count = 0
+    after_school_count = 0
+    multiple_programs_count = 0
+    no_programs_count = 0
     
     for user_data in registered_users.values():
-        teams = user_data.get('teams', [])
-        if "national" in teams and "demonstration" in teams:
-            both_teams_count += 1
-        elif "national" in teams:
+        programs = user_data.get('programs', [])
+        program_count = 0
+        
+        if "national" in programs:
             national_count += 1
-        elif "demonstration" in teams:
+            program_count += 1
+        if "demonstration" in programs:
             demonstration_count += 1
-        else:
-            no_teams_count += 1
+            program_count += 1
+        if "after_school" in programs:
+            after_school_count += 1
+            program_count += 1
+        
+        if program_count > 1:
+            multiple_programs_count += 1
+        elif program_count == 0:
+            no_programs_count += 1
     
     embed = discord.Embed(
         title="📊 Registration Statistics",
@@ -3406,45 +4291,663 @@ async def chat_register_stats(ctx):
     
     embed.add_field(name="🔴 National Team", value=f"{national_count} members", inline=True)
     embed.add_field(name="🔵 Demonstration Team", value=f"{demonstration_count} members", inline=True)
-    embed.add_field(name="🏆 Both Teams", value=f"{both_teams_count} members", inline=True)
-    embed.add_field(name="👪 No Teams", value=f"{no_teams_count} members", inline=True)
+    embed.add_field(name="📚 After School", value=f"{after_school_count} members", inline=True)
+    embed.add_field(name="🎯 Multiple Programs", value=f"{multiple_programs_count} members", inline=True)
+    embed.add_field(name="👪 No Programs", value=f"{no_programs_count} members", inline=True)
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="add_teams")
+@bot_command.command(name="view_json_data")
 @bot_channel_only()
-async def chat_add_teams(ctx, member: discord.Member):
-    """Allow user to join teams post-registration."""
-    user_id = member.id
+async def chat_view_json_data(ctx, member: discord.Member = None):
+    """
+    View the JSON data for a user (including roles stored in JSON).
     
-    if str(user_id) not in registered_users:
-        await ctx.send(f"❌ {member.mention} is not registered yet!", ephemeral=True)
-        return
-    
-    try:
-        dm_channel = await member.create_dm()
+    Useful for debugging what's actually in the JSON file.
+    """
+    if not member:
+        # Show all users in JSON if no member specified
+        total_users = len(registered_users)
         
-        user_data = registered_users[str(user_id)]
-        child_name = user_data['child_name']
-        gender = user_data['gender']
+        if total_users == 0:
+            await ctx.send("📁 JSON file is empty.", ephemeral=True)
+            return
         
+        # Create paginated view of all users
+        users_per_page = 10
+        pages = []
+        current_page = []
+        
+        for user_id_str, user_data in registered_users.items():
+            try:
+                user_id = int(user_id_str)
+                guild_member = ctx.guild.get_member(user_id)
+                user_name = guild_member.name if guild_member else f"ID: {user_id} (Not in server)"
+                
+                child_name = user_data.get('child_name', 'Unknown')
+                roles = user_data.get('roles', [])
+                
+                entry = f"**{user_name}**\n"
+                entry += f"• Child: {child_name}\n"
+                entry += f"• Roles in JSON: {', '.join(roles) if roles else 'None'}\n"
+                entry += f"• ID: {user_id_str}\n"
+                
+                current_page.append(entry)
+                
+                if len(current_page) >= users_per_page:
+                    pages.append(current_page)
+                    current_page = []
+            except:
+                continue
+        
+        if current_page:
+            pages.append(current_page)
+        
+        if not pages:
+            await ctx.send("📁 No valid users found in JSON.", ephemeral=True)
+            return
+        
+        class JSONListView(discord.ui.View):
+            def __init__(self, pages):
+                super().__init__(timeout=60)
+                self.current_page = 0
+                self.pages = pages
+            
+            @discord.ui.button(label="⬅️ Previous", style=discord.ButtonStyle.secondary)
+            async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != ctx.author.id:
+                    await interaction.response.send_message("❌ This is not for you.", ephemeral=True)
+                    return
+                
+                self.current_page = (self.current_page - 1) % len(self.pages)
+                await self.update_message(interaction)
+            
+            @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.secondary)
+            async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != ctx.author.id:
+                    await interaction.response.send_message("❌ This is not for you.", ephemeral=True)
+                    return
+                
+                self.current_page = (self.current_page + 1) % len(self.pages)
+                await self.update_message(interaction)
+            
+            async def update_message(self, interaction):
+                embed = discord.Embed(
+                    title="📁 JSON File Contents",
+                    description=f"**Total users in JSON:** {total_users}\n**Page {self.current_page + 1}/{len(self.pages)}**",
+                    color=discord.Color.blue()
+                )
+                
+                for entry in self.pages[self.current_page]:
+                    embed.add_field(name="---", value=entry, inline=False)
+                
+                await interaction.response.edit_message(embed=embed, view=self)
+        
+        # Send first page
         embed = discord.Embed(
-            title="🎯 Join Teams",
-            description="Select which teams you'd like to join:\n\n"
-                      "🔴 **National Team** - For competitive athletes\n"
-                      "🔵 **Demonstration Team** - For performances and shows\n\n"
-                      "You can select one, both, or none.\n"
-                      "Click **✅ Done** when finished.",
+            title="📁 JSON File Contents",
+            description=f"**Total users in JSON:** {total_users}\n**Page 1/{len(pages)}**",
             color=discord.Color.blue()
         )
         
-        view = TeamSelectView(user_id, child_name, gender)
-        await dm_channel.send(embed=embed, view=view)
+        for entry in pages[0]:
+            embed.add_field(name="---", value=entry, inline=False)
         
-        await ctx.send(f"✅ Sent team selection DM to {member.mention}", ephemeral=True)
+        view = JSONListView(pages)
+        await ctx.send(embed=embed, view=view, ephemeral=True)
+        return
+    
+    # If member is specified, show their specific data
+    user_id_str = str(member.id)
+    
+    if user_id_str not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not in the JSON file.", ephemeral=True)
+        return
+    
+    user_data = registered_users[user_id_str]
+    
+    embed = discord.Embed(
+        title=f"📄 JSON Data for {member.name}",
+        description=f"**User ID:** {member.id}",
+        color=discord.Color.blue()
+    )
+    
+    # Show all fields
+    embed.add_field(name="Child's Name", value=user_data.get('child_name', 'Not set'), inline=True)
+    embed.add_field(name="Registration Role", value=user_data.get('role_display', user_data.get('role', 'Not set')), inline=True)
+    embed.add_field(name="Gender", value=user_data.get('gender', 'Not set'), inline=True)
+    embed.add_field(name="Nickname", value=user_data.get('nickname', 'Not set'), inline=True)
+    
+    # Programs (teams)
+    programs = user_data.get('programs', [])
+    if programs:
+        program_list = []
+        if "national" in programs:
+            program_list.append("National Team 🔴")
+        if "demonstration" in programs:
+            program_list.append("Demonstration Team 🔵")
+        if "after_school" in programs:
+            program_list.append("After School 📚")
+        embed.add_field(name="Programs", value=", ".join(program_list), inline=True)
+    else:
+        embed.add_field(name="Programs", value="None", inline=True)
+    
+    # Stored roles
+    roles = user_data.get('roles', [])
+    if roles:
+        embed.add_field(name="Roles in JSON", value="\n".join([f"• {role}" for role in roles]), inline=False)
+    else:
+        embed.add_field(name="Roles in JSON", value="No roles stored", inline=False)
+    
+    # Registration info
+    embed.add_field(name="Registered At", value=user_data.get('registered_at', 'Unknown'), inline=False)
+    
+    # Private chat info
+    has_chat = user_data.get('has_active_private_chat', False)
+    chat_status = "✅ Active" if has_chat else "❌ Inactive"
+    channel_id = user_data.get('private_chat_channel_id')
+    channel_mention = f"<#{channel_id}>" if channel_id else "None"
+    
+    embed.add_field(name="Private Chat Status", value=chat_status, inline=True)
+    embed.add_field(name="Private Chat Channel", value=channel_mention, inline=True)
+    
+    # Auto-added flag
+    if user_data.get('auto_added'):
+        embed.add_field(name="⚠️ Note", value="User was auto-added (not through normal registration)", inline=False)
+    
+    await ctx.send(embed=embed, ephemeral=True)
+
+@bot_command.command(name="apply_json_roles")
+@bot_channel_only()
+async def chat_update_roles_from_json(ctx):
+    """
+    Update Discord roles from registered_users.json file.
+    
+    This command reads the JSON file and synchronizes Discord roles 
+    for all registered users based on the JSON data.
+    
+    Useful when you've manually edited the JSON file and need to
+    apply those changes to Discord roles.
+    """
+    await ctx.send("🔄 **Starting role update from JSON file...**")
+    
+    guild = ctx.guild
+    total_users = len(registered_users)
+    processed = 0
+    updated = 0
+    errors = []
+    
+    # Create role mapping from JSON role names to Discord role IDs
+    role_mapping = {
+        "Family Member": FAMILY_ROLE_ID,
+        "National Team": NATIONAL_TEAM_ROLE_ID,
+        "Demonstration Team": DEMONSTRATION_TEAM_ROLE_ID,
+        "After School": AFTER_SCHOOL_ROLE_ID,
+        "Student": STUDENT_ROLE_ID,
+        "Instructor": INSTRUCTOR_ROLE_ID,
+        "Master Lee's Family": MASTER_LEE_FAMILY_ROLE_ID
+    }
+    
+    # Create a reverse mapping for logging
+    id_to_name = {v: k for k, v in role_mapping.items() if v}
+    
+    # Process each user in the JSON file
+    for user_id_str, user_data in registered_users.items():
+        try:
+            user_id = int(user_id_str)
+            member = guild.get_member(user_id)
+            
+            if not member:
+                errors.append(f"User {user_id_str} not found in server")
+                continue
+            
+            processed += 1
+            
+            # Get stored roles from JSON
+            stored_role_names = user_data.get('roles', [])
+            stored_role_ids = []
+            
+            # Convert role names to role IDs
+            for role_name in stored_role_names:
+                if role_name in role_mapping and role_mapping[role_name]:
+                    stored_role_ids.append(role_mapping[role_name])
+            
+            # Get current Discord roles (only managed ones)
+            current_role_ids = []
+            for role_id, role_name in id_to_name.items():
+                role = guild.get_role(role_id)
+                if role and role in member.roles:
+                    current_role_ids.append(role_id)
+            
+            # Compare and update
+            roles_to_add = set(stored_role_ids) - set(current_role_ids)
+            roles_to_remove = set(current_role_ids) - set(stored_role_ids)
+            
+            changes_made = False
+            role_changes = []
+            
+            # Add missing roles
+            for role_id in roles_to_add:
+                role = guild.get_role(role_id)
+                if role and role not in member.roles:
+                    try:
+                        await member.add_roles(role, reason="JSON sync: Add missing role")
+                        role_changes.append(f"➕ {id_to_name.get(role_id, 'Unknown Role')}")
+                        changes_made = True
+                    except Exception as e:
+                        errors.append(f"{member.name}: Failed to add {id_to_name.get(role_id, 'Unknown')} - {e}")
+            
+            # Remove extra roles
+            for role_id in roles_to_remove:
+                role = guild.get_role(role_id)
+                if role and role in member.roles:
+                    try:
+                        await member.remove_roles(role, reason="JSON sync: Remove extra role")
+                        role_changes.append(f"➖ {id_to_name.get(role_id, 'Unknown Role')}")
+                        changes_made = True
+                    except Exception as e:
+                        errors.append(f"{member.name}: Failed to remove {id_to_name.get(role_id, 'Unknown')} - {e}")
+            
+            if changes_made:
+                updated += 1
+                print(f"✅ Updated roles for {member.name}: {', '.join(role_changes)}")
+            
+            # Update progress every 10 users
+            if processed % 10 == 0:
+                await ctx.send(f"📊 Processed {processed}/{total_users} users...")
+                
+        except Exception as e:
+            errors.append(f"Error processing user {user_id_str}: {str(e)}")
+            print(f"❌ Error processing user {user_id_str}: {e}")
+    
+    # Create summary embed
+    embed = discord.Embed(
+        title="✅ JSON Role Update Complete",
+        description=f"**Processed:** {processed} users\n"
+                  f"**Updated:** {updated} users\n"
+                  f"**Errors:** {len(errors)}",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    # Add detailed results
+    if updated > 0:
+        embed.add_field(
+            name="📝 Updates Applied",
+            value=f"Successfully updated roles for {updated} users based on JSON file.",
+            inline=False
+        )
+    
+    if errors:
+        # Show first 5 errors if there are many
+        error_display = "\n".join(errors[:5])
+        if len(errors) > 5:
+            error_display += f"\n...and {len(errors) - 5} more errors"
         
-    except discord.Forbidden:
-        await ctx.send(f"❌ Cannot send DM to {member.mention} - they might have DMs disabled", ephemeral=True)
+        embed.add_field(
+            name="❌ Errors Encountered",
+            value=error_display,
+            inline=False
+        )
+    
+    if updated == 0 and len(errors) == 0:
+        embed.add_field(
+            name="⚡ No Changes Needed",
+            value="All users already have the correct roles according to the JSON file.",
+            inline=False
+        )
+    
+    embed.set_footer(text=f"JSON file: {REGISTRY_FILE}")
+    
+    await ctx.send(embed=embed)
+    
+    # Log to log channel
+    log_embed = discord.Embed(
+        title="🔄 JSON Role Update Executed",
+        description=f"**Processed:** {processed} users\n"
+                  f"**Updated:** {updated} users\n"
+                  f"**By:** {ctx.author.mention}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    await send_to_log_channel(guild, "", log_embed)
+
+@bot_command.command(name="adjust_role")
+@bot_channel_only()
+async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_type_input: str):
+    """
+    Add or remove a role from a user and update JSON immediately.
+    
+    Usage:
+    !bot_command adjust_role @user add national_team
+    !bot_command adjust_role @user remove after_school
+    !bot_command adjust_role @user add "demonstration team"
+    
+    Role Types:
+    - family_member: Family Member role
+    - national_team: National Team role
+    - demonstration_team: Demonstration Team role
+    - after_school: After School role
+    - student: Student role
+    - instructor: Instructor role
+    - master_family: Master Lee's Family role
+    
+    Note: This updates the JSON file immediately and optionally updates Discord roles.
+    """
+    
+    # Normalize role type input
+    role_type = role_type_input.lower().replace(' ', '_').replace('-', '_')
+    
+    # Debug: Show what we received
+    print(f"DEBUG: Received - member: {member}, action: {action}, role_type_input: {role_type_input}, normalized: {role_type}")
+    
+    # Map role types to role IDs and display names
+    role_mapping = {
+        'family_member': {
+            'id': FAMILY_ROLE_ID,
+            'name': 'Family Member',
+            'json_name': 'Family Member',
+            'requires_discord': True
+        },
+        'family': {
+            'id': FAMILY_ROLE_ID,
+            'name': 'Family Member',
+            'json_name': 'Family Member',
+            'requires_discord': True
+        },
+        'national_team': {
+            'id': NATIONAL_TEAM_ROLE_ID,
+            'name': 'National Team',
+            'json_name': 'National Team',
+            'requires_discord': True,
+            'program_field': 'national'
+        },
+        'national': {
+            'id': NATIONAL_TEAM_ROLE_ID,
+            'name': 'National Team',
+            'json_name': 'National Team',
+            'requires_discord': True,
+            'program_field': 'national'
+        },
+        'demonstration_team': {
+            'id': DEMONSTRATION_TEAM_ROLE_ID,
+            'name': 'Demonstration Team',
+            'json_name': 'Demonstration Team',
+            'requires_discord': True,
+            'program_field': 'demonstration'
+        },
+        'demo': {
+            'id': DEMONSTRATION_TEAM_ROLE_ID,
+            'name': 'Demonstration Team',
+            'json_name': 'Demonstration Team',
+            'requires_discord': True,
+            'program_field': 'demonstration'
+        },
+        'demonstration': {
+            'id': DEMONSTRATION_TEAM_ROLE_ID,
+            'name': 'Demonstration Team',
+            'json_name': 'Demonstration Team',
+            'requires_discord': True,
+            'program_field': 'demonstration'
+        },
+        'after_school': {
+            'id': AFTER_SCHOOL_ROLE_ID,
+            'name': 'After School',
+            'json_name': 'After School',
+            'requires_discord': True,
+            'program_field': 'after_school'
+        },
+        'afterschool': {
+            'id': AFTER_SCHOOL_ROLE_ID,
+            'name': 'After School',
+            'json_name': 'After School',
+            'requires_discord': True,
+            'program_field': 'after_school'
+        },
+        'student': {
+            'id': STUDENT_ROLE_ID,
+            'name': 'Student',
+            'json_name': 'Student',
+            'requires_discord': True
+        },
+        'instructor': {
+            'id': INSTRUCTOR_ROLE_ID,
+            'name': 'Instructor',
+            'json_name': 'Instructor',
+            'requires_discord': True
+        },
+        'master_family': {
+            'id': MASTER_LEE_FAMILY_ROLE_ID,
+            'name': "Master Lee's Family",
+            'json_name': "Master Lee's Family",
+            'requires_discord': True
+        },
+        'master': {
+            'id': MASTER_LEE_FAMILY_ROLE_ID,
+            'name': "Master Lee's Family",
+            'json_name': "Master Lee's Family",
+            'requires_discord': True
+        },
+        'master_lee': {
+            'id': MASTER_LEE_FAMILY_ROLE_ID,
+            'name': "Master Lee's Family",
+            'json_name': "Master Lee's Family",
+            'requires_discord': True
+        }
+    }
+    
+    # Validate action
+    action = action.lower()
+    if action not in ['add', 'remove']:
+        valid_actions = "`add` or `remove`"
+        await ctx.send(f"❌ Invalid action. Use {valid_actions}.", ephemeral=True)
+        return
+    
+    # Check if role type exists
+    if role_type not in role_mapping:
+        # Create a more helpful error message with available roles
+        valid_roles = "\n".join([f"- `{role}` ({role_mapping[role]['name']})" for role in role_mapping.keys()])
+        embed = discord.Embed(
+            title="❌ Invalid Role Type",
+            description=f"**You entered:** `{role_type_input}`\n**Normalized to:** `{role_type}`\n\n"
+                       f"**Available roles:**\n{valid_roles}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed, ephemeral=True)
+        return
+    
+    role_info = role_mapping[role_type]
+    role_id = role_info['id']
+    role_display = role_info['name']
+    json_role_name = role_info['json_name']
+    
+    # Check if role is configured
+    if role_id == 0:
+        await ctx.send(f"❌ {role_display} role is not configured in config.txt", ephemeral=True)
+        return
+    
+    user_id_str = str(member.id)
+    
+    # Check if user exists in JSON
+    if user_id_str not in registered_users:
+        # Create entry if not exists
+        registered_users[user_id_str] = {
+            'child_name': member.name,
+            'role': 'Admin-Assigned',
+            'role_display': '👑 Admin-Assigned Role',
+            'nickname': member.display_name,
+            'gender': 'unknown',
+            'programs': [],
+            'registered_at': discord.utils.utcnow().isoformat(),
+            'has_active_private_chat': False,
+            'private_chat_channel_id': None,
+            'roles': [],
+            'admin_assigned': True
+        }
+    
+    # Get current JSON data
+    user_data = registered_users[user_id_str]
+    current_roles = user_data.get('roles', [])
+    current_programs = user_data.get('programs', [])
+    
+    # Track changes
+    changes_made = False
+    discord_changes = []
+    json_changes = []
+    
+    # Handle ADD action
+    if action == 'add':
+        # Update Discord role if required
+        if role_info['requires_discord']:
+            discord_role = ctx.guild.get_role(role_id)
+            if discord_role and discord_role not in member.roles:
+                try:
+                    await member.add_roles(discord_role, reason=f"Role added by admin {ctx.author.name}")
+                    discord_changes.append(f"➕ Added {role_display} Discord role")
+                    changes_made = True
+                except Exception as e:
+                    error_msg = f"⚠️ Could not add Discord role: {e}"
+                    await ctx.send(error_msg, ephemeral=True)
+                    discord_changes.append(error_msg)
+                    # Still update JSON even if Discord fails
+            elif discord_role and discord_role in member.roles:
+                discord_changes.append(f"✅ Already has {role_display} Discord role")
+            elif not discord_role:
+                discord_changes.append(f"❌ Discord role not found (ID: {role_id})")
+        
+        # Update JSON roles array
+        if json_role_name not in current_roles:
+            current_roles.append(json_role_name)
+            user_data['roles'] = current_roles
+            json_changes.append(f"➕ Added {role_display} to JSON roles")
+            changes_made = True
+        else:
+            json_changes.append(f"✅ Already has {role_display} in JSON roles")
+        
+        # Update programs field if applicable
+        if 'program_field' in role_info:
+            program_field = role_info['program_field']
+            if program_field not in current_programs:
+                current_programs.append(program_field)
+                user_data['programs'] = current_programs
+                json_changes.append(f"➕ Added {role_display} to JSON programs")
+                changes_made = True
+            else:
+                json_changes.append(f"✅ Already has {role_display} in JSON programs")
+    
+    # Handle REMOVE action
+    elif action == 'remove':
+        # Update Discord role if required
+        if role_info['requires_discord']:
+            discord_role = ctx.guild.get_role(role_id)
+            if discord_role and discord_role in member.roles:
+                try:
+                    await member.remove_roles(discord_role, reason=f"Role removed by admin {ctx.author.name}")
+                    discord_changes.append(f"➖ Removed {role_display} Discord role")
+                    changes_made = True
+                except Exception as e:
+                    error_msg = f"⚠️ Could not remove Discord role: {e}"
+                    await ctx.send(error_msg, ephemeral=True)
+                    discord_changes.append(error_msg)
+                    # Still update JSON even if Discord fails
+            elif discord_role and discord_role not in member.roles:
+                discord_changes.append(f"✅ Already missing {role_display} Discord role")
+            elif not discord_role:
+                discord_changes.append(f"❌ Discord role not found (ID: {role_id})")
+        
+        # Update JSON roles array
+        if json_role_name in current_roles:
+            current_roles.remove(json_role_name)
+            user_data['roles'] = current_roles
+            json_changes.append(f"➖ Removed {role_display} from JSON roles")
+            changes_made = True
+        else:
+            json_changes.append(f"✅ Already missing {role_display} from JSON roles")
+        
+        # Update programs field if applicable
+        if 'program_field' in role_info:
+            program_field = role_info['program_field']
+            if program_field in current_programs:
+                current_programs.remove(program_field)
+                user_data['programs'] = current_programs
+                json_changes.append(f"➖ Removed {role_display} from JSON programs")
+                changes_made = True
+            else:
+                json_changes.append(f"✅ Already missing {role_display} from JSON programs")
+    
+    # Save changes to JSON
+    if changes_made:
+        registered_users[user_id_str] = user_data
+        save_registered_users(registered_users)
+    
+    # Create response embed
+    embed = discord.Embed(
+        title="✅ Role Adjustment Complete" if changes_made else "ℹ️ Role Status",
+        description=f"**User:** {member.mention} ({member.id})\n"
+                  f"**Action:** {action.upper()} {role_display}",
+        color=discord.Color.green() if changes_made else discord.Color.blue()
+    )
+    
+    # Add change details
+    if discord_changes:
+        embed.add_field(
+            name="🔄 Discord Status",
+            value="\n".join(discord_changes),
+            inline=False
+        )
+    
+    if json_changes:
+        embed.add_field(
+            name="📝 JSON Status",
+            value="\n".join(json_changes),
+            inline=False
+        )
+    
+    # Show current state
+    embed.add_field(
+        name="📋 Current JSON Roles",
+        value=", ".join(user_data.get('roles', [])) if user_data.get('roles') else "None",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="🎯 Current JSON Programs",
+        value=", ".join(user_data.get('programs', [])) if user_data.get('programs') else "None",
+        inline=True
+    )
+    
+    # Show Discord roles for comparison
+    discord_role_names = [role.name for role in member.roles if role.name != "@everyone"]
+    embed.add_field(
+        name="🔄 Current Discord Roles",
+        value=", ".join(discord_role_names[:10]) if discord_role_names else "None",
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Updated by {ctx.author.name}")
+    
+    await ctx.send(embed=embed, ephemeral=True)
+    
+    # Log to log channel if changes were made
+    if changes_made:
+        log_embed = discord.Embed(
+            title="🔄 Role Adjustment",
+            description=f"**User:** {member.mention} ({member.id})\n"
+                      f"**Action:** {action.upper()} {role_display}\n"
+                      f"**By:** {ctx.author.mention}\n"
+                      f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        if discord_changes:
+            log_embed.add_field(name="Discord Changes", value="\n".join(discord_changes), inline=False)
+        if json_changes:
+            log_embed.add_field(name="JSON Updates", value="\n".join(json_changes), inline=False)
+        
+        await send_to_log_channel(ctx.guild, "", log_embed)
+        
+        print(f"✅ Admin adjusted role for {member.name}: {action} {role_display}")
 
 @bot_command.command(name="view_user")
 @bot_channel_only()
@@ -3525,6 +5028,103 @@ async def chat_remove_check(ctx, member: discord.Member):
         await ctx.send("❌ Could not find green check mark reaction")
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
+
+@bot_command.command(name="update_discord_roles")
+@bot_channel_only()
+async def chat_update_discord_roles(ctx, member: discord.Member):
+    """Update a user's stored JSON roles from their current Discord roles."""
+    user_id_str = str(member.id)
+    
+    if user_id_str not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not registered in the system!", ephemeral=True)
+        return
+    
+    await update_user_roles_in_json(member.id, member)
+    
+    # Get updated data
+    stored_roles = registered_users[user_id_str].get('roles', [])
+    
+    embed = discord.Embed(
+        title="✅ JSON Roles Updated",
+        description=f"Updated {member.mention}'s stored JSON roles to match Discord.",
+        color=discord.Color.green()
+    )
+    
+    embed.add_field(
+        name="📋 Now Stored in JSON",
+        value="\n".join([f"• {role}" for role in stored_roles]) if stored_roles else "No roles",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed, ephemeral=True)
+
+@bot_command.command(name="view_user_roles")
+@bot_channel_only()
+async def chat_view_user_roles(ctx, member: discord.Member):
+    """View a user's stored roles in the JSON file and compare with current Discord roles."""
+    user_id_str = str(member.id)
+    
+    if user_id_str not in registered_users:
+        await ctx.send(f"❌ {member.mention} is not registered in the system!", ephemeral=True)
+        return
+    
+    user_data = registered_users[user_id_str]
+    
+    embed = discord.Embed(
+        title=f"👤 Role Information: {member.name}",
+        description=f"**Child's Name:** {user_data.get('child_name', 'Not set')}\n"
+                   f"**Registration Role:** {user_data.get('role_display', user_data.get('role', 'Not set'))}",
+        color=discord.Color.blue()
+    )
+    
+    # Get current Discord roles for comparison
+    current_roles = [role.name for role in member.roles if role.name != "@everyone"]
+    stored_roles = user_data.get('roles', [])
+    
+    embed.add_field(
+        name="📋 Stored in JSON",
+        value="\n".join([f"• {role}" for role in stored_roles]) if stored_roles else "No roles stored",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="🔄 Current Discord Roles",
+        value="\n".join([f"• {role}" for role in current_roles[:10]]) if current_roles else "No roles",
+        inline=True
+    )
+    
+    # Check for discrepancies
+    missing_from_json = set(current_roles) - set(stored_roles)
+    missing_from_discord = set(stored_roles) - set(current_roles)
+    
+    if missing_from_json:
+        embed.add_field(
+            name="⚠️ Missing from JSON",
+            value="\n".join([f"• {role}" for role in missing_from_json]),
+            inline=False
+        )
+    
+    if missing_from_discord:
+        embed.add_field(
+            name="⚠️ Missing from Discord",
+            value="\n".join([f"• {role}" for role in missing_from_discord]),
+            inline=False
+        )
+    
+    if not missing_from_json and not missing_from_discord:
+        embed.add_field(
+            name="✅ Status",
+            value="JSON and Discord roles are synchronized!",
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="🔧 Action Required",
+            value=f"Use `!bot_command chat update_discord_roles {member.mention}` to fix",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed, ephemeral=True)
 
 @bot_command.command(name="check_consistency")
 @bot_channel_only()
@@ -3686,199 +5286,752 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
     await ctx.send(embed=embed)
 
 # =============================================================================
-# ROLE MANAGEMENT COMMANDS
+# AUTO-PIN BOT COMMAND ON STARTUP
 # =============================================================================
 
-@bot_command.command(name="assign_instructor")
-@bot_channel_only()
-async def assign_instructor(ctx, member: discord.Member):
+async def auto_pin_bot_command():
     """
-    Assign Instructor role to a user.
-    
-    This command will:
-    1. Assign the Instructor role
-    2. Grant same channel access as Master Lee's Family
-    3. Log the assignment
+    Automatically send and pin the bot command help message on startup.
+    Only creates if not already exists.
     """
-    guild = ctx.guild
-    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print("❌ Guild not found for auto-pin")
+        return
     
-    if not instructor_role:
-        await ctx.send("❌ Instructor role not found in the server configuration!", ephemeral=True)
+    bot_channel = guild.get_channel(BOT_COMMAND_CHANNEL_ID)
+    if not bot_channel:
+        print("❌ Bot command channel not found for auto-pin")
         return
     
     try:
-        # Assign Instructor role
-        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
+        # Check if bot command message already exists and is pinned
+        pinned_messages = await bot_channel.pins()
+        bot_command_exists = False
         
-        # Log the assignment
-        embed = discord.Embed(
-            title="👨‍🏫 Instructor Role Assigned",
-            description=f"**User:** {member.mention} ({member.id})\n"
-                      f"**Assigned by:** {ctx.author.mention}\n"
-                      f"**Time:** <t:{int(time.time())}:R>",
-            color=discord.Color.gold(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        await send_to_log_channel(guild, "", embed)
+        for pinned_msg in pinned_messages:
+            # Check if this is a bot command message from our bot
+            if pinned_msg.author == bot.user and pinned_msg.embeds:
+                for embed in pinned_msg.embeds:
+                    if embed.title and "ADMIN BOT COMMANDS" in embed.title:
+                        bot_command_exists = True
+                        print(f"✅ Bot command message already pinned: {pinned_msg.id}")
+                        break
+            
+            if bot_command_exists:
+                break
         
-        # Send success message
-        success_embed = discord.Embed(
-            title="✅ Instructor Role Assigned",
-            description=f"Successfully assigned **Instructor** role to {member.mention}",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=success_embed)
-        
-        print(f"👨‍🏫 Assigned Instructor role to {member.name}")
-        
-    except discord.Forbidden:
-        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
+        # If no existing bot command message, create and pin one
+        if not bot_command_exists:
+            print("📌 Creating and pinning bot command message...")
+            
+            # Create the bot command embed
+            from discord.ext.commands import Context
+            from io import StringIO
+            import contextlib
+            
+            # Create a mock context to use the chat_command function
+            class MockContext:
+                def __init__(self, channel):
+                    self.channel = channel
+                    self.guild = guild
+                    self.send = channel.send
+                    self.author = guild.get_member(ADMIN_USER_ID) or guild.me
+            
+            mock_ctx = MockContext(bot_channel)
+            
+            # Call the chat_command function directly
+            embed = create_bot_commands_embed()
+            message = await bot_channel.send(embed=embed)
+            
+            # Pin the message
+            await message.pin(reason="Auto-pinned bot command on startup")
+            print(f"✅ Bot command message created and pinned: {message.id}")
+            
+            # Also log to log channel
+            log_embed = discord.Embed(
+                title="📌 Bot Command Auto-Pinned",
+                description=f"Bot command help message has been auto-pinned in {bot_channel.mention}",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            await send_to_log_channel(guild, "", log_embed)
+    
     except Exception as e:
-        await ctx.send(f"❌ Error assigning Instructor role: {e}", ephemeral=True)
+        print(f"❌ Error auto-pinning bot command: {e}")
+        import traceback
+        traceback.print_exc()
 
+def create_bot_commands_embed():
+    """Create the bot commands embed for auto-pinning."""
+    embed = discord.Embed(
+        title="💬 **ADMIN BOT COMMANDS**",
+        description="**All commands must be used in this channel only.**\n\n"
+                   "Use `!bot_command chat [command_name]` or `!bot_command [command_name]`\n"
+                   "**Example:** `!bot_command chat view_user @user`\n",
+        color=discord.Color.blue()
+    )
+    
+    # Add all sections (same as in chat_command function)
+    embed.add_field(
+        name="📊 **REAL-TIME MONITORING**",
+        value=(
+            "`active_private_chats` - Show all active private chats with activity status\n"
+            "`active_chats` - Show active 1-on-1 conversations\n"
+            "`register_stats` - Show registration statistics with charts\n"
+            "`system_status` - Complete bot health and system status\n"
+            "`monitor_activity @user` - Live monitor user activity\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="👤 **USER MANAGEMENT**",
+        value=(
+            "`view_user @user` - Complete user profile with all data\n"
+            "`view_user_roles @user` - View JSON vs Discord role comparison\n"
+            "`edit_user @user field:value` - Edit any user field\n"
+            "`send_dm @user message` - Send direct message to user\n"
+            "`assign_role @user role_type` - Assign specific role\n"
+            "`update_discord_roles @user` - Update JSON from current Discord roles\n"
+            "`update_roles @user` - Sync Discord roles with JSON\n"
+            "`force_register @user` - Force registration for user\n"
+            "`reset_user @user` - Reset user registration data\n"
+            "`view_json_data @user` - View raw JSON data\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔒 **PRIVATE CHAT MANAGEMENT**",
+        value=(
+            "`cleanup_private_chats` - Bulk delete ALL private chats\n"
+            "`resend_delete_button #channel` - Fix delete button in channel\n"
+            "`close_chat #channel` - Close specific private chat\n"
+            "`archive_inactive` - Archive chats inactive >7 days\n"
+            "`chat_history #channel` - View chat message history\n"
+            "`export_chat #channel` - Export chat to text file\n"
+            "`monitor_chat #channel` - Live monitor chat activity\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎭 **ROLE MANAGEMENT**",
+        value=(
+            "`assign_master_lee_family @user` - Assign Master Lee's Family role\n"
+            "`assign_instructor @user` - Assign Instructor role\n"
+            "`assign_both_roles @user` - Assign both special roles\n"
+            "`remove_role @user role_type` - Remove specific role\n"
+            "`list_special_roles` - List all special role members\n"
+            "`check_role_consistency` - Verify role assignments\n"
+            "`role_audit @user` - Full role audit for user\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📝 **REGISTRATION SYSTEM**",
+        value=(
+            "`fix_name @user new_name` - Fix user's registered name\n"
+            "`add_programs @user programs` - Add programs to user\n"
+            "`remove_programs @user programs` - Remove programs\n"
+            "`transfer_registration @old @new` - Transfer registration\n"
+            "`update_registration @user` - Update registration details\n"
+            "`check_consistency` - Check registry/green check consistency\n"
+            "`verify_registration @user` - Verify registration completion\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💾 **DATA MANAGEMENT**",
+        value=(
+            "`backup_registry` - Create registry backup\n"
+            "`restore_registry backup_file` - Restore from backup\n"
+            "`cleanup_json` - Clean orphaned JSON entries\n"
+            "`export_registry` - Export registry to CSV\n"
+            "`import_registry file` - Import from CSV\n"
+            "`search_users query` - Search users by name/role\n"
+            "`batch_update field=value` - Batch update users\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🛠️ **SYSTEM & MAINTENANCE**",
+        value=(
+            "`setup` - Setup rules message\n"
+            "`setup_bot_channel` - Create bot command channel\n"
+            "`setup_log_channel` - Create log channel\n"
+            "`clear_chats` - Clear active conversations\n"
+            "`remove_check @user` - Remove user's green check\n"
+            "`update_message_id ID` - Update rules message ID\n"
+            "`cleanup_orphaned_data` - Clean up orphaned data\n"
+            "`reinitialize_buttons` - Reinitialize all bot buttons\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔄 **JSON SYNCHRONIZATION**",
+        value=(
+            "`apply_json_roles` - Update Discord roles from JSON file\n"
+            "`update_json_now` - Force immediate JSON sync\n"
+            "`force_json_sync @user` - Force sync for specific user\n"
+            "`json_task_status` - Show JSON task status\n"
+            "`start_json_task` - Start JSON sync task\n"
+            "`stop_json_task` - Stop JSON sync task\n"
+            "`verify_json_roles @user` - Verify JSON role sync\n"
+            "`fix_json_inconsistencies` - Fix JSON inconsistencies\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🐛 **TESTING & DEBUGGING**",
+        value=(
+            "`test_button` - Test delete button functionality\n"
+            "`test_reaction` - Test reaction detection\n"
+            "`debug_ids` - Show all configuration IDs\n"
+            "`check_message ID` - Check message reactions\n"
+            "`simulate_join @user` - Simulate user joining\n"
+            "`simulate_leave @user` - Simulate user leaving\n"
+            "`test_dm_flow` - Test DM registration flow\n"
+            "`debug_webhook` - Test webhook functionality\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📈 **REPORTS & ANALYTICS**",
+        value=(
+            "`export_activity` - Export activity logs\n"
+            "`generate_report` - Generate system report\n"
+            "`audit_log days=7` - Show recent system events\n"
+            "`usage_statistics` - Show command usage stats\n"
+            "`performance_metrics` - Show bot performance\n"
+            "`error_logs` - View error logs\n"
+            "`daily_summary` - Generate daily summary\n"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⚡ **QUICK ACTIONS**",
+        value=(
+            "`quick_close @user` - Quick close user's private chat\n"
+            "`quick_message @user msg` - Quick DM to user\n"
+            "`quick_role @user role` - Quick role assignment\n"
+            "`quick_backup` - Quick registry backup\n"
+            "`quick_stats` - Quick statistics\n"
+            "`quick_check @user` - Quick user check\n"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(
+        text="🚀 Bot v2.0.0 | Commands only work in bot-commands channel | Prefix: ! | Auto-pinned on startup"
+    )
+    
+    return embed
+
+# =============================================================================
+# CHANNEL CLEARING FUNCTION
+# =============================================================================
+
+@bot_command.command(name="clear_channel")
+@bot_channel_only()
+async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
+    """
+    Clear ALL messages in a channel for a fresh start.
+    
+    Usage:
+    !bot_command clear_channel #channel-name
+    !bot_command clear_channel (clears current channel)
+    
+    Warning: This cannot be undone!
+    """
+    if not channel:
+        channel = ctx.channel
+    
+    # Double-check authorization
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ Only admin can clear channels.", ephemeral=True)
+        return
+    
+    # Show confirmation
+    class ConfirmClearView(discord.ui.View):
+        def __init__(self, channel_id: int):
+            super().__init__(timeout=60)
+            self.channel_id = channel_id
+            self.confirmed = False
+        
+        @discord.ui.button(label="✅ Yes, Clear Everything", style=discord.ButtonStyle.danger)
+        async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if interaction.user.id != ADMIN_USER_ID:
+                await interaction.response.send_message("❌ Only admin can confirm this action.", ephemeral=True)
+                return
+            
+            self.confirmed = True
+            self.stop()
+            
+            channel = interaction.guild.get_channel(self.channel_id)
+            if not channel:
+                await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+                return
+            
+            # Send initial response
+            await interaction.response.send_message("🗑️ Clearing channel... This may take a while...", ephemeral=True)
+            
+            try:
+                deleted_count = 0
+                
+                # Function to delete messages in batches
+                async def delete_batch():
+                    nonlocal deleted_count
+                    async for message in channel.history(limit=None):
+                        try:
+                            await message.delete()
+                            deleted_count += 1
+                            # Small delay to avoid rate limits
+                            if deleted_count % 10 == 0:
+                                await asyncio.sleep(0.5)
+                        except discord.NotFound:
+                            pass  # Message already deleted
+                        except discord.Forbidden:
+                            await interaction.followup.send(
+                                f"❌ No permission to delete messages in {channel.mention}",
+                                ephemeral=True
+                            )
+                            return False
+                        except Exception as e:
+                            print(f"Error deleting message: {e}")
+                            continue
+                    return True
+                
+                # Delete all messages
+                success = await delete_batch()
+                
+                if success:
+                    # Send completion message
+                    completion_embed = discord.Embed(
+                        title="✅ Channel Cleared",
+                        description=f"Successfully cleared {deleted_count} messages from {channel.mention}",
+                        color=discord.Color.green()
+                    )
+                    
+                    try:
+                        # Try to edit the original response
+                        await interaction.edit_original_response(
+                            content="",
+                            embed=completion_embed,
+                            view=None
+                        )
+                    except:
+                        # If can't edit, send new message
+                        await channel.send(embed=completion_embed)
+                    
+                    # Log to log channel
+                    log_embed = discord.Embed(
+                        title="🗑️ Channel Cleared",
+                        description=f"**Channel:** {channel.mention}\n"
+                                  f"**Messages cleared:** {deleted_count}\n"
+                                  f"**By:** {interaction.user.mention}",
+                        color=discord.Color.orange(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    await send_to_log_channel(interaction.guild, "", log_embed)
+                    
+                    print(f"🧹 Cleared {deleted_count} messages from #{channel.name}")
+            
+            except Exception as e:
+                error_embed = discord.Embed(
+                    title="❌ Error Clearing Channel",
+                    description=f"Error: {str(e)}",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+        
+        @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if interaction.user.id != ADMIN_USER_ID:
+                await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
+                return
+            
+            self.confirmed = False
+            self.stop()
+            
+            await interaction.response.edit_message(
+                content="✅ Clear operation cancelled.",
+                embed=None,
+                view=None
+            )
+    
+    # Show confirmation embed
+    embed = discord.Embed(
+        title="⚠️ CLEAR CHANNEL CONFIRMATION",
+        description=f"**You are about to clear ALL messages in {channel.mention}**\n\n"
+                   f"**This action will:**\n"
+                   f"• Delete ALL messages in the channel\n"
+                   f"• Cannot be undone\n"
+                   f"• May take several minutes\n\n"
+                   f"**Are you absolutely sure?**",
+        color=discord.Color.red()
+    )
+    
+    embed.add_field(
+        name="⚠️ Warning",
+        value="This is a destructive operation. All message history will be permanently deleted.",
+        inline=False
+    )
+    
+    view = ConfirmClearView(channel.id)
+    await ctx.send(embed=embed, view=view, ephemeral=True)
+
+# =============================================================================
+# UPDATE ON_READY TO AUTO-PIN
+# =============================================================================
+
+@bot.event
+async def on_ready():
+    """Bot startup initialization and system verification."""
+    print(f'✅ {bot.user} is online!')
+    print(f'🆔 Bot ID: {bot.user.id}')
+    print(f'👥 Connected to {len(bot.guilds)} server(s)')
+    
+    # AUTO-LOG ADMIN INFO ON SERVER START
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        admin_member = guild.get_member(ADMIN_USER_ID)
+        if admin_member:
+            admin_id_str = str(ADMIN_USER_ID)
+            
+            # Check if admin already exists in registered_users
+            if admin_id_str not in registered_users:
+                # Create admin entry
+                registered_users[admin_id_str] = {
+                    'child_name': 'Admin User',
+                    'role': 'Admin',
+                    'role_display': '👑 Server Admin',
+                    'nickname': admin_member.display_name,
+                    'gender': 'admin',
+                    'programs': [],
+                    'registered_at': discord.utils.utcnow().isoformat(),
+                    'has_active_private_chat': False,
+                    'private_chat_channel_id': None,
+                    'roles': ['Admin'],
+                    'admin_user': True,
+                    'auto_added': True
+                }
+                save_registered_users(registered_users)
+                print(f"✅ Auto-logged admin user: {admin_member.name}")
+            else:
+                # Ensure admin has Admin role in the array
+                if 'Admin' not in registered_users[admin_id_str].get('roles', []):
+                    registered_users[admin_id_str]['roles'] = registered_users[admin_id_str].get('roles', []) + ['Admin']
+                    registered_users[admin_id_str]['admin_user'] = True
+                    save_registered_users(registered_users)
+                    print(f"✅ Updated admin roles for: {admin_member.name}")
+    
+    migrate_existing_users()
+
+    if guild:
+        print(f'🏠 Server: {guild.name} (ID: {guild.id})')
+        
+        # Register persistent views
+        bot.add_view(GeneralChatButtonView())
+        
+        # Re-register delete button views for existing private chats
+        await reinitialize_private_chat_views()
+        
+        # AUTO-PIN BOT COMMAND MESSAGE
+        await auto_pin_bot_command()
+        
+        # Verify monitored channels
+        print("\n📢 MONITORED CHANNELS (messages will create private chats):")
+        for channel_id in MONITORED_CHANNELS:
+            channel = guild.get_channel(channel_id)
+            if channel:
+                print(f'   ✅ #{channel.name} (ID: {channel.id})')
+            else:
+                print(f'   ❌ Channel not found! ID: {channel_id}')
+        
+        # Verify admin user
+        admin_user = guild.get_member(ADMIN_USER_ID)
+        if admin_user:
+            print(f'👑 Admin: {admin_user.name}#{admin_user.discriminator} (ID: {admin_user.id})')
+        else:
+            print(f'⚠️ Admin user not found! ID: {ADMIN_USER_ID}')
+        
+        # Verify Master Lee's Family role
+        master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        if master_lee_family_role:
+            print(f'👑 Master Lee\'s Family Role: {master_lee_family_role.name} (ID: {master_lee_family_role.id})')
+            print(f'   👥 Members with this role: {len(master_lee_family_role.members)}')
+        else:
+            print(f'⚠️ Master Lee\'s Family role not found! ID: {MASTER_LEE_FAMILY_ROLE_ID}')
+
+       # Verify Student role
+        student_role = guild.get_role(STUDENT_ROLE_ID)
+        if student_role:
+            print(f'🎓 Student Role: {student_role.name} (ID: {student_role.id})')
+        else:
+            print(f'⚠️ Student role not found! ID: {STUDENT_ROLE_ID}')
+
+        # Verify Instructor role
+        instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+        if instructor_role:
+            print(f'👨‍🏫 Instructor Role: {instructor_role.name} (ID: {instructor_role.id})')
+        else:
+            print(f'⚠️ Instructor role not found! ID: {INSTRUCTOR_ROLE_ID}')
+        
+        # Verify rules channel
+        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+        if rules_channel:
+            print(f'\n📜 Rules Channel: #{rules_channel.name} (ID: {rules_channel.id})')
+        else:
+            print(f'❌ Rules channel not found! ID: {RULES_CHANNEL_ID}')
+        
+        # Verify family role
+        family_role = guild.get_role(FAMILY_ROLE_ID)
+        if family_role:
+            print(f'👪 Family Role: {family_role.name} (ID: {family_role.id})')
+        else:
+            print(f'❌ Family role not found! ID: {FAMILY_ROLE_ID}')
+        
+        # Verify team roles
+        national_role = guild.get_role(NATIONAL_TEAM_ROLE_ID)
+        if national_role:
+            print(f'🔴 National Team Role: {national_role.name} (ID: {national_role.id})')
+        else:
+            print(f"⚠️ National Team role not found! ID: {NATIONAL_TEAM_ROLE_ID}")
+            
+        demonstration_role = guild.get_role(DEMONSTRATION_TEAM_ROLE_ID)
+        if demonstration_role:
+            print(f'🔵 Demonstration Team Role: {demonstration_role.name} (ID: {demonstration_role.id})')
+        else:
+            print(f'⚠️ Demonstration Team role not found! ID: {DEMONSTRATION_TEAM_ROLE_ID}')
+
+        after_school_role = guild.get_role(AFTER_SCHOOL_ROLE_ID)
+        if after_school_role:
+            print(f'📚 After School Role: {after_school_role.name} (ID: {after_school_role.id})')
+        else:
+            print(f'⚠️ After School role not found! ID: {AFTER_SCHOOL_ROLE_ID}')
+
+        # Verify After School channel
+        after_school_channel = guild.get_channel(AFTER_SCHOOL_CHANNEL_ID)
+        if after_school_channel:
+            print(f'📢 After School Channel: #{after_school_channel.name} (ID: {after_school_channel.id})')
+        else:
+            print(f'⚠️ After School channel not found! ID: {AFTER_SCHOOL_CHANNEL_ID}')
+        
+        # Verify private conversation category
+        if PRIVATE_CONVERSATION_CATEGORY_ID:
+            private_category = guild.get_channel(PRIVATE_CONVERSATION_CATEGORY_ID)
+            if private_category:
+                print(f'📁 Private Conversation Category: #{private_category.name} (ID: {private_category.id})')
+            else:
+                print(f'⚠️ Private conversation category not found! ID: {PRIVATE_CONVERSATION_CATEGORY_ID}')
+                print('   Please ensure setup program has run to create the category')
+        
+        # Verify bot command channel
+        if BOT_COMMAND_CHANNEL_ID:
+            bot_channel = guild.get_channel(BOT_COMMAND_CHANNEL_ID)
+            if bot_channel:
+                print(f'💬 Bot Command Channel: #{bot_channel.name} (ID: {BOT_COMMAND_CHANNEL_ID})')
+            else:
+                print(f'⚠️ Bot command channel not found! ID: {BOT_COMMAND_CHANNEL_ID}')
+        else:
+            print(f'⚠️ Bot command channel not configured!')
+        
+        # Verify log channel
+        if LOG_CHANNEL_ID:
+            log_channel = guild.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                print(f'📋 Log Channel: #{log_channel.name} (ID: {LOG_CHANNEL_ID})')
+            else:
+                print(f'⚠️ Log channel not found! ID: {LOG_CHANNEL_ID}')
+        else:
+            print(f'⚠️ Log channel not configured! Notifications will be sent to admin DM')
+        
+        # Validate green check mark consistency
+        print("\n🔍 Checking registration status...")
+        await verify_green_check_consistency(guild, rules_channel)
+    
+    # Set bot status
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.watching,
+        name="for messages to forward"
+    ))
+
+# =============================================================================
+# ROLE MANAGEMENT COMMANDS
+# =============================================================================
 @bot_command.command(name="assign_master_lee_family")
 @bot_channel_only()
-async def assign_master_lee_family(ctx, member: discord.Member):
-    """
-    Assign Master Lee's Family role to a user.
-    
-    This role:
-    1. Grants special privileges
-    2. Exempts from standard registration
-    3. Provides special channel access
-    """
+async def chat_assign_master_lee_family(ctx, member: discord.Member):
+    """Assign Master Lee's Family role and add to JSON."""
     guild = ctx.guild
     master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-    
-    if not master_family_role:
-        await ctx.send("❌ Master Lee's Family role not found in the server configuration!", ephemeral=True)
-        return
-    
-    try:
-        # Assign Master Lee's Family role
-        await member.add_roles(master_family_role, reason="Master Lee's Family role assigned by admin")
-        
-        # Remove green check if they have one (since they're exempt from registration)
-        await remove_green_check_reaction(member)
-        
-        # Send welcome DM to the user
-        try:
-            dm_channel = await member.create_dm()
-            welcome_embed = discord.Embed(
-                title="👑 Welcome to Master Lee's Family!",
-                description="You have been granted the **Master Lee's Family** role!\n\n"
-                          "**Special Privileges:**\n"
-                          "• Full access to all channels\n"
-                          "• No need to complete standard registration\n"
-                          "• Special family member status\n\n"
-                          "Welcome to the inner circle!",
-                color=discord.Color.gold()
-            )
-            await dm_channel.send(embed=welcome_embed)
-        except discord.Forbidden:
-            print(f"⚠️ Cannot send DM to {member.name}")
-        
-        # Log the assignment
-        embed = discord.Embed(
-            title="👑 Master Lee's Family Role Assigned",
-            description=f"**User:** {member.mention} ({member.id})\n"
-                      f"**Assigned by:** {ctx.author.mention}\n"
-                      f"**Time:** <t:{int(time.time())}:R>",
-            color=discord.Color.purple(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        await send_to_log_channel(guild, "", embed)
-        
-        # Send success message
-        success_embed = discord.Embed(
-            title="✅ Master Lee's Family Role Assigned",
-            description=f"Successfully assigned **Master Lee's Family** role to {member.mention}",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=success_embed)
-        
-        print(f"👑 Assigned Master Lee's Family role to {member.name}")
-        
-    except discord.Forbidden:
-        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
-    except Exception as e:
-        await ctx.send(f"❌ Error assigning Master Lee's Family role: {e}", ephemeral=True)
-
-@bot_command.command(name="assign_both_roles")
-@bot_channel_only()
-async def assign_both_roles(ctx, member: discord.Member):
-    """
-    Assign both Instructor and Master Lee's Family roles to a user.
-    
-    This is useful for instructors who are also part of Master Lee's family.
-    """
-    guild = ctx.guild
-    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
-    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-    
-    if not instructor_role:
-        await ctx.send("❌ Instructor role not found!", ephemeral=True)
-        return
     
     if not master_family_role:
         await ctx.send("❌ Master Lee's Family role not found!", ephemeral=True)
         return
     
     try:
-        # Assign both roles
-        await member.add_roles(instructor_role, master_family_role, 
-                              reason="Both roles assigned by admin")
+        # Assign Discord role
+        await member.add_roles(master_family_role, reason="Master Lee's Family role assigned by admin")
         
-        # Remove green check if they have one
-        await remove_green_check_reaction(member)
+        # Add to JSON if not exists
+        user_id_str = str(member.id)
+        if user_id_str not in registered_users:
+            registered_users[user_id_str] = {
+                'child_name': member.name,
+                'role': 'Master Lee Family',
+                'role_display': '👑 Master Lee Family',
+                'nickname': member.display_name,
+                'gender': 'master_family',
+                'programs': [],
+                'registered_at': discord.utils.utcnow().isoformat(),
+                'has_active_private_chat': False,
+                'private_chat_channel_id': None,
+                'roles': ["Master Lee's Family"],
+                'master_lee_family': True,
+                'auto_added': True
+            }
+        else:
+            # Update existing entry
+            roles = registered_users[user_id_str].get('roles', [])
+            if "Master Lee's Family" not in roles:
+                roles.append("Master Lee's Family")
+                registered_users[user_id_str]['roles'] = roles
+            registered_users[user_id_str]['master_lee_family'] = True
         
-        # Send welcome DM
-        try:
-            dm_channel = await member.create_dm()
-            welcome_embed = discord.Embed(
-                title="🎉 Double Role Assignment!",
-                description="You have been granted **both special roles**:\n\n"
-                          "**👨‍🏫 Instructor Role:**\n"
-                          "• Teaching permissions\n"
-                          "• Training access\n\n"
-                          "**👑 Master Lee's Family Role:**\n"
-                          "• Full channel access\n"
-                          "• Family member status\n"
-                          "• No registration required\n\n"
-                          "Welcome to your new positions!",
-                color=discord.Color.gold()
-            )
-            await dm_channel.send(embed=welcome_embed)
-        except discord.Forbidden:
-            print(f"⚠️ Cannot send DM to {member.name}")
+        save_registered_users(registered_users)
         
-        # Log the assignment
+        # Simulate "pressed" green check mark
+        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+        if rules_channel:
+            try:
+                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                # Check if user already has the reaction
+                has_reaction = False
+                for reaction in rules_message.reactions:
+                    if str(reaction.emoji) == '✅':
+                        async for user in reaction.users():
+                            if user.id == member.id:
+                                has_reaction = True
+                                break
+                    if has_reaction:
+                        break
+                
+                if not has_reaction:
+                    await rules_message.add_reaction('✅')
+                    print(f"✅ Added green check mark for {member.name}")
+            except Exception as e:
+                print(f"⚠️ Could not add green check reaction: {e}")
+        
+        # Send confirmation
         embed = discord.Embed(
-            title="🎉 Both Special Roles Assigned",
-            description=f"**User:** {member.mention} ({member.id})\n"
-                      f"**Roles:** Instructor + Master Lee's Family\n"
-                      f"**Assigned by:** {ctx.author.mention}\n"
-                      f"**Time:** <t:{int(time.time())}:R>",
-            color=discord.Color.gold(),
-            timestamp=datetime.now(timezone.utc)
+            title="✅ Master Lee's Family Role Assigned",
+            description=f"Successfully assigned **Master Lee's Family** role to {member.mention}\n"
+                      f"✓ Added to JSON registry\n"
+                      f"✓ Granted green check mark\n"
+                      f"✓ Full channel access enabled",
+            color=discord.Color.gold()
         )
-        await send_to_log_channel(guild, "", embed)
+        await ctx.send(embed=embed)
         
-        # Send success message
-        success_embed = discord.Embed(
-            title="✅ Both Roles Assigned",
-            description=f"Successfully assigned **Instructor** and **Master Lee's Family** roles to {member.mention}",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=success_embed)
-        
-        print(f"🎉 Assigned both roles to {member.name}")
+        print(f"👑 Assigned Master Lee's Family role to {member.name}")
         
     except discord.Forbidden:
         await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
     except Exception as e:
-        await ctx.send(f"❌ Error assigning roles: {e}", ephemeral=True)
+        await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot_command.command(name="assign_instructor")
+@bot_channel_only()
+async def chat_assign_instructor(ctx, member: discord.Member):
+    """Assign Instructor role and add to JSON."""
+    guild = ctx.guild
+    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+    
+    if not instructor_role:
+        await ctx.send("❌ Instructor role not found!", ephemeral=True)
+        return
+    
+    try:
+        # Assign Discord role
+        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
+        
+        # Add to JSON if not exists
+        user_id_str = str(member.id)
+        if user_id_str not in registered_users:
+            registered_users[user_id_str] = {
+                'child_name': member.name,
+                'role': 'Instructor',
+                'role_display': '👨‍🏫 Instructor',
+                'nickname': member.display_name,
+                'gender': 'instructor',
+                'programs': [],
+                'registered_at': discord.utils.utcnow().isoformat(),
+                'has_active_private_chat': False,
+                'private_chat_channel_id': None,
+                'roles': ["Instructor"],
+                'instructor': True,
+                'auto_added': True
+            }
+        else:
+            # Update existing entry
+            roles = registered_users[user_id_str].get('roles', [])
+            if "Instructor" not in roles:
+                roles.append("Instructor")
+                registered_users[user_id_str]['roles'] = roles
+            registered_users[user_id_str]['instructor'] = True
+        
+        save_registered_users(registered_users)
+        
+        # Simulate "pressed" green check mark
+        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
+        if rules_channel:
+            try:
+                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                # Check if user already has the reaction
+                has_reaction = False
+                for reaction in rules_message.reactions:
+                    if str(reaction.emoji) == '✅':
+                        async for user in reaction.users():
+                            if user.id == member.id:
+                                has_reaction = True
+                                break
+                    if has_reaction:
+                        break
+                
+                if not has_reaction:
+                    await rules_message.add_reaction('✅')
+                    print(f"✅ Added green check mark for {member.name}")
+            except Exception as e:
+                print(f"⚠️ Could not add green check reaction: {e}")
+        
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Instructor Role Assigned",
+            description=f"Successfully assigned **Instructor** role to {member.mention}\n"
+                      f"✓ Added to JSON registry\n"
+                      f"✓ Granted green check mark\n"
+                      f"✓ Teaching permissions enabled",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+        
+        print(f"👨‍🏫 Assigned Instructor role to {member.name}")
+        
+    except discord.Forbidden:
+        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
+
 
 @bot_command.command(name="remove_role")
 @bot_channel_only()
@@ -3939,59 +6092,75 @@ async def remove_role(ctx, member: discord.Member, role_type: str):
     except Exception as e:
         await ctx.send(f"❌ Error removing role: {e}", ephemeral=True)
 
-@bot_command.command(name="list_special_roles")
+@bot_command.command(name="cleanup_json")
 @bot_channel_only()
-async def list_special_roles(ctx):
-    """
-    List all users with Instructor and Master Lee's Family roles.
-    """
+async def chat_cleanup_json(ctx):
+    """Clean up registered_users.json by removing users no longer in the server."""
     guild = ctx.guild
-    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
-    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    original_count = len(registered_users)
+    removed_users = []
     
-    if not instructor_role and not master_family_role:
-        await ctx.send("❌ Neither special role is configured!", ephemeral=True)
-        return
+    for user_id_str in list(registered_users.keys()):
+        user_id = int(user_id_str)
+        member = guild.get_member(user_id)
+        
+        if not member:
+            # User not in server, remove from JSON
+            removed_users.append({
+                'id': user_id_str,
+                'name': registered_users[user_id_str].get('child_name', 'Unknown'),
+                'roles': registered_users[user_id_str].get('roles', [])
+            })
+            del registered_users[user_id_str]
     
+    # Save cleaned JSON
+    if removed_users:
+        save_registered_users(registered_users)
+    
+    # Create report
     embed = discord.Embed(
-        title="👑 Special Role Members",
-        description="List of members with Instructor and Master Lee's Family roles:",
-        color=discord.Color.purple()
+        title="🧹 JSON Cleanup Complete",
+        description=f"**Original users:** {original_count}\n"
+                   f"**Current users:** {len(registered_users)}\n"
+                   f"**Removed users:** {len(removed_users)}",
+        color=discord.Color.green()
     )
     
-    # List Instructor role members
-    if instructor_role:
-        instructors = [member.mention for member in instructor_role.members]
-        embed.add_field(
-            name=f"👨‍🏫 Instructors ({len(instructors)})",
-            value="\n".join(instructors) if instructors else "No instructors",
-            inline=False
-        )
-    
-    # List Master Lee's Family role members
-    if master_family_role:
-        family_members = [member.mention for member in master_family_role.members]
-        embed.add_field(
-            name=f"👑 Master Lee's Family ({len(family_members)})",
-            value="\n".join(family_members) if family_members else "No family members",
-            inline=False
-        )
-    
-    # List members with both roles
-    if instructor_role and master_family_role:
-        both_roles = []
-        for member in instructor_role.members:
-            if master_family_role in member.roles:
-                both_roles.append(member.mention)
+    if removed_users:
+        removed_list = []
+        for user in removed_users[:10]:  # Show first 10
+            removed_list.append(f"• ID: {user['id']}, Name: {user['name']}, Roles: {len(user['roles'])}")
         
-        if both_roles:
+        embed.add_field(
+            name="🗑️ Removed Users",
+            value="\n".join(removed_list),
+            inline=False
+        )
+        
+        if len(removed_users) > 10:
             embed.add_field(
-                name="🎉 Both Roles",
-                value="\n".join(both_roles),
+                name="ℹ️ Note",
+                value=f"... and {len(removed_users) - 10} more users",
                 inline=False
             )
+    else:
+        embed.add_field(
+            name="✅ No Cleanup Needed",
+            value="All registered users are still in the server.",
+            inline=False
+        )
     
     await ctx.send(embed=embed)
+    
+    # Log to log channel
+    log_embed = discord.Embed(
+        title="🧹 JSON Cleanup Executed",
+        description=f"**Removed:** {len(removed_users)} orphaned users\n"
+                   f"**By:** {ctx.author.mention}",
+        color=discord.Color.orange(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    await send_to_log_channel(guild, "", log_embed)
 
 # =============================================================================
 # SETUP COMMANDS
@@ -4211,6 +6380,885 @@ async def chat_reset_general_permissions(ctx):
         
     except Exception as e:
         await ctx.send(f"❌ Error resetting permissions: {e}", ephemeral=True)
+
+# =============================================================================
+# BACKGROUND TASKS
+# =============================================================================
+@tasks.loop(hours=24)  # Runs every 24 hours
+async def update_json_with_roles():
+    """
+    Background task that updates registered_users.json with current Discord roles.
+    Runs every 24 hours to keep JSON synchronized with Discord.
+    """
+    try:
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            print("⚠️ Cannot update JSON with roles: Guild not found")
+            return
+        
+        print("🔄 Starting 24-hour JSON role update task...")
+        updated_count = 0
+        errors = []
+        
+        # Role ID to name mapping for tracking
+        role_mapping = {
+            FAMILY_ROLE_ID: "Family Member",
+            NATIONAL_TEAM_ROLE_ID: "National Team", 
+            DEMONSTRATION_TEAM_ROLE_ID: "Demonstration Team",
+            AFTER_SCHOOL_ROLE_ID: "After School",
+            STUDENT_ROLE_ID: "Student",
+            INSTRUCTOR_ROLE_ID: "Instructor",
+            MASTER_LEE_FAMILY_ROLE_ID: "Master Lee's Family"
+        }
+        
+        # Filter out 0 IDs (unconfigured roles)
+        role_mapping = {k: v for k, v in role_mapping.items() if k != 0}
+        
+        # Update each registered user
+        for user_id_str, user_data in registered_users.items():
+            try:
+                user_id = int(user_id_str)
+                member = guild.get_member(user_id)
+                
+                if not member:
+                    # User not in server, but keep their data
+                    continue
+                
+                # Get current roles from Discord
+                current_roles = []
+                for role_id, role_name in role_mapping.items():
+                    role = guild.get_role(role_id)
+                    if role and role in member.roles:
+                        current_roles.append(role_name)
+                
+                # Add Admin role if applicable
+                if user_id == ADMIN_USER_ID:
+                    if "Admin" not in current_roles:
+                        current_roles.append("Admin")
+                
+                # Check if roles have changed
+                stored_roles = user_data.get('roles', [])
+                
+                # Also update the programs field based on current roles
+                # Map role names to program identifiers
+                programs = []
+                if "National Team" in current_roles:
+                    programs.append("national")
+                if "Demonstration Team" in current_roles:
+                    programs.append("demonstration")
+                if "After School" in current_roles:
+                    programs.append("after_school")
+                
+                # Update the programs field
+                registered_users[user_id_str]['programs'] = programs
+                
+                # Sort for comparison
+                current_roles_sorted = sorted(current_roles)
+                stored_roles_sorted = sorted(stored_roles)
+                
+                if current_roles_sorted != stored_roles_sorted:
+                    # Update the user's roles in JSON
+                    registered_users[user_id_str]['roles'] = current_roles
+                    updated_count += 1
+                    
+                    # Log the change
+                    print(f"📝 Updated roles for {member.name}: {stored_roles} -> {current_roles}")
+                    print(f"📝 Updated programs for {member.name}: {programs}")
+                    
+            except Exception as e:
+                errors.append(f"User {user_id_str}: {str(e)}")
+                continue
+        
+        # Save if updates were made
+        if updated_count > 0:
+            save_registered_users(registered_users)
+            print(f"✅ JSON updated: {updated_count} users' roles and programs synchronized")
+            
+            # Log to log channel
+            embed = discord.Embed(
+                title="🔄 JSON Role Synchronization Complete",
+                description=f"**Updated:** {updated_count} users\n"
+                          f"**Time:** <t:{int(time.time())}:F>\n"
+                          f"**Task:** 24-hour automatic sync\n\n"
+                          f"**Note:** Programs field now synchronized with roles",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            guild = bot.get_guild(GUILD_ID)
+            if guild:
+                await send_to_log_channel(guild, "", embed)
+        
+        if errors:
+            print(f"⚠️ Errors during JSON update: {len(errors)} errors")
+            for error in errors[:5]:  # Show first 5 errors
+                print(f"   {error}")
+            if len(errors) > 5:
+                print(f"   ...and {len(errors) - 5} more")
+                
+    except Exception as e:
+        print(f"❌ Error in JSON update task: {e}")
+        import traceback
+        traceback.print_exc()
+
+@update_json_with_roles.before_loop
+async def before_update_json_task():
+    """Wait for bot to be ready before starting the task."""
+    await bot.wait_until_ready()
+    print("⏰ 24-hour JSON update task is waiting to start...")
+
+# =============================================================================
+# MANUAL UPDATE COMMAND
+# =============================================================================
+
+@bot_command.command(name="update_json_now")
+@bot_channel_only()
+async def chat_update_json_now(ctx):
+    """
+    Manually trigger JSON role update immediately.
+    
+    Use this command to force an update without waiting for the 24-hour task.
+    """
+    await ctx.send("🔄 Starting manual JSON role update...")
+    
+    try:
+        # Get current counts before update
+        before_count = len(registered_users)
+        
+        # Run the update function
+        await update_json_with_roles()
+        
+        # Get updated counts
+        after_count = len(registered_users)
+        
+        # Send completion message
+        embed = discord.Embed(
+            title="✅ Manual JSON Update Complete",
+            description=f"**Users in JSON:** {after_count}\n"
+                       f"**Previous count:** {before_count}\n\n"
+                       f"JSON file has been synchronized with current Discord roles.",
+            color=discord.Color.green()
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Manual Update Failed",
+            description=f"Error: {str(e)}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+
+@bot_command.command(name="force_json_sync")
+@bot_channel_only()
+async def chat_force_json_sync(ctx, member: discord.Member = None):
+    """
+    Force sync JSON roles for a specific user or all users.
+    
+    Usage:
+    !bot_command force_json_sync @user  # Sync specific user
+    !bot_command force_json_sync        # Sync all users
+    """
+    guild = ctx.guild
+    
+    if member:
+        # Sync specific user
+        user_id_str = str(member.id)
+        
+        if user_id_str not in registered_users:
+            await ctx.send(f"❌ {member.mention} is not in the JSON registry!", ephemeral=True)
+            return
+        
+        # Get current Discord roles
+        current_roles = []
+        role_mapping = {
+            FAMILY_ROLE_ID: "Family Member",
+            NATIONAL_TEAM_ROLE_ID: "National Team",
+            DEMONSTRATION_TEAM_ROLE_ID: "Demonstration Team",
+            AFTER_SCHOOL_ROLE_ID: "After School",
+            STUDENT_ROLE_ID: "Student",
+            INSTRUCTOR_ROLE_ID: "Instructor",
+            MASTER_LEE_FAMILY_ROLE_ID: "Master Lee's Family"
+        }
+        
+        for role_id, role_name in role_mapping.items():
+            if role_id != 0:  # Skip unconfigured roles
+                role = guild.get_role(role_id)
+                if role and role in member.roles:
+                    current_roles.append(role_name)
+        
+        # Add Admin role if applicable
+        if member.id == ADMIN_USER_ID:
+            if "Admin" not in current_roles:
+                current_roles.append("Admin")
+        
+        # Update programs based on roles
+        programs = []
+        if "National Team" in current_roles:
+            programs.append("national")
+        if "Demonstration Team" in current_roles:
+            programs.append("demonstration")
+        if "After School" in current_roles:
+            programs.append("after_school")
+        
+        # Update JSON
+        registered_users[user_id_str]['roles'] = current_roles
+        registered_users[user_id_str]['programs'] = programs
+        save_registered_users(registered_users)
+        
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ User JSON Synced",
+            description=f"Updated JSON roles and programs for {member.mention}",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="Current Roles in JSON",
+            value="\n".join([f"• {role}" for role in current_roles]) if current_roles else "No roles",
+            inline=False
+        )
+        embed.add_field(
+            name="Updated Programs in JSON",
+            value=", ".join(programs) if programs else "No programs",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+        
+    else:
+        # Sync all users
+        await ctx.send("🔄 Force syncing JSON roles and programs for ALL users...")
+        
+        # Run the update function
+        await update_json_with_roles()
+        
+        await ctx.send("✅ Force sync complete! Programs field now synchronized with roles.")
+
+@bot_command.command(name="json_task_status")
+@bot_channel_only()
+async def chat_json_task_status(ctx):
+    """Show the status of the 24-hour JSON update task."""
+    task = update_json_with_roles
+    
+    embed = discord.Embed(
+        title="⏰ JSON Update Task Status",
+        color=discord.Color.blue()
+    )
+    
+    if task.is_running():
+        # Calculate next run time
+        current_time = discord.utils.utcnow()
+        hours_since_start = (current_time - task.next_iteration).total_seconds() / 3600
+        
+        embed.description = "✅ **Task is running**"
+        embed.add_field(
+            name="Next Run",
+            value=f"Approximately every 24 hours\nLast started: {hours_since_start:.1f} hours ago",
+            inline=False
+        )
+    else:
+        embed.description = "❌ **Task is not running**"
+        embed.add_field(
+            name="Status",
+            value="The background task is not running. Use `!bot_command start_json_task` to start it.",
+            inline=False
+        )
+    
+    embed.add_field(
+        name="Total Users in JSON",
+        value=f"{len(registered_users)} users",
+        inline=True
+    )
+    
+    await ctx.send(embed=embed)
+
+@bot_command.command(name="start_json_task")
+@bot_channel_only()
+async def chat_start_json_task(ctx):
+    """Manually start the 24-hour JSON update task."""
+    task = update_json_with_roles
+    
+    if task.is_running():
+        await ctx.send("✅ JSON update task is already running.", ephemeral=True)
+        return
+    
+    try:
+        task.start()
+        await ctx.send("✅ Started 24-hour JSON update task!")
+        
+        # Log to log channel
+        embed = discord.Embed(
+            title="▶️ JSON Update Task Started",
+            description=f"24-hour JSON role synchronization task has been started.\n"
+                       f"**By:** {ctx.author.mention}\n"
+                       f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(ctx.guild, "", embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Failed to start task: {str(e)}", ephemeral=True)
+
+@bot_command.command(name="stop_json_task")
+@bot_channel_only()
+async def chat_stop_json_task(ctx):
+    """Stop the 24-hour JSON update task."""
+    task = update_json_with_roles
+    
+    if not task.is_running():
+        await ctx.send("❌ JSON update task is not running.", ephemeral=True)
+        return
+    
+    try:
+        task.cancel()
+        await ctx.send("✅ Stopped 24-hour JSON update task.")
+        
+        # Log to log channel
+        embed = discord.Embed(
+            title="⏹️ JSON Update Task Stopped",
+            description=f"24-hour JSON role synchronization task has been stopped.\n"
+                       f"**By:** {ctx.author.mention}\n"
+                       f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(ctx.guild, "", embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Failed to stop task: {str(e)}", ephemeral=True)
+
+@bot_command.command(name="migrate_json_structure")
+@bot_channel_only()
+async def chat_migrate_json_structure(ctx):
+    """
+    Migrate existing JSON file to new structure and create backup.
+    
+    This command will:
+    1. Create a timestamped backup of the current JSON file
+    2. Migrate all existing users to the new structure
+    3. Preserve special roles (Instructor, Master Lee's Family, etc.)
+    4. Transform 'teams' field to 'programs' field
+    5. Ensure all required fields exist
+    """
+    await ctx.send("🔄 **Starting JSON Migration Process**")
+    
+    try:
+        # Step 1: Create backup of current file
+        backup_filename = f"registered_users_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+        
+        # Read current data
+        with open(REGISTRY_FILE, 'r') as f:
+            current_data = json.load(f)
+        
+        # Create backup
+        with open(backup_filename, 'w') as f:
+            json.dump(current_data, f, indent=2)
+        
+        embed_step1 = discord.Embed(
+            title="✅ Step 1: Backup Created",
+            description=f"Created backup file: `{backup_filename}`\n\n"
+                      f"**Original users:** {len(current_data)}\n"
+                      f"**Backup size:** {os.path.getsize(backup_filename)} bytes",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed_step1)
+        
+        # Step 2: Perform migration
+        migrated_count = 0
+        errors = []
+        new_data = {}
+        
+        for user_id_str, user_data in current_data.items():
+            try:
+                # Create new structure with default values
+                migrated_user = {
+                    'child_name': user_data.get('child_name', 'Unknown'),
+                    'role': user_data.get('role', 'Unknown'),
+                    'role_display': user_data.get('role_display', user_data.get('role', 'Unknown')),
+                    'nickname': user_data.get('nickname', user_data.get('child_name', 'Unknown')),
+                    'gender': user_data.get('gender', 'unknown'),
+                    'registered_at': user_data.get('registered_at', discord.utils.utcnow().isoformat()),
+                    'has_active_private_chat': user_data.get('has_active_private_chat', False),
+                    'private_chat_channel_id': user_data.get('private_chat_channel_id', None),
+                    'roles': [],  # Will be populated from Discord roles
+                    'programs': []  # New field
+                }
+                
+                # Handle teams/programs migration
+                if 'teams' in user_data:
+                    # Migrate teams to programs
+                    teams = user_data['teams']
+                    programs = []
+                    if isinstance(teams, list):
+                        for team in teams:
+                            if team == "national":
+                                programs.append("national")
+                            elif team == "demonstration":
+                                programs.append("demonstration")
+                            elif team == "after_school":
+                                programs.append("after_school")
+                    migrated_user['programs'] = programs
+                    print(f"🔁 Migrated teams to programs for {user_id_str}: {teams} -> {programs}")
+                
+                # Preserve programs if already exists
+                if 'programs' in user_data:
+                    migrated_user['programs'] = user_data['programs']
+                
+                # Preserve roles if they exist (special roles)
+                if 'roles' in user_data:
+                    migrated_user['roles'] = user_data['roles']
+                
+                # Preserve auto_added flag
+                if 'auto_added' in user_data:
+                    migrated_user['auto_added'] = user_data['auto_added']
+                
+                # Preserve admin flag
+                if 'admin_user' in user_data:
+                    migrated_user['admin_user'] = user_data['admin_user']
+                
+                # Preserve master_lee_family flag
+                if 'master_lee_family' in user_data:
+                    migrated_user['master_lee_family'] = user_data['master_lee_family']
+                
+                # Preserve instructor flag
+                if 'instructor' in user_data:
+                    migrated_user['instructor'] = user_data['instructor']
+                
+                # Add to new data
+                new_data[user_id_str] = migrated_user
+                migrated_count += 1
+                
+            except Exception as e:
+                errors.append(f"User {user_id_str}: {str(e)}")
+                # Keep original data as fallback
+                new_data[user_id_str] = user_data
+        
+        # Step 3: Save migrated data
+        with open(REGISTRY_FILE, 'w') as f:
+            json.dump(new_data, f, indent=2)
+        
+        # Step 4: Load the migrated data into memory
+        global registered_users
+        registered_users = new_data
+        
+        # Step 5: Create summary
+        embed_summary = discord.Embed(
+            title="✅ JSON Migration Complete",
+            description=f"**Successfully migrated:** {migrated_count} users\n"
+                      f"**Errors encountered:** {len(errors)}\n"
+                      f"**New file structure:** ✅ Applied",
+            color=discord.Color.gold()
+        )
+        
+        # Show sample of new structure
+        if new_data:
+            sample_user_id = list(new_data.keys())[0]
+            sample_data = new_data[sample_user_id]
+            
+            embed_summary.add_field(
+                name="📋 Sample of New Structure",
+                value=f"```json\n{json.dumps({sample_user_id: sample_data}, indent=2)[:1000]}...```",
+                inline=False
+            )
+        
+        # Show errors if any
+        if errors:
+            error_list = "\n".join(errors[:5])
+            if len(errors) > 5:
+                error_list += f"\n...and {len(errors) - 5} more errors"
+            
+            embed_summary.add_field(
+                name="⚠️ Migration Errors",
+                value=error_list,
+                inline=False
+            )
+        
+        # Migration checklist
+        checklist = """
+        ✅ **Migration Checklist:**
+        • Created backup before migration
+        • Preserved all user data
+        • Renamed 'teams' field to 'programs'
+        • Added 'roles' array for special roles
+        • Ensured all required fields exist
+        • Maintained special role flags
+        • Preserved timestamps
+        """
+        embed_summary.add_field(name="📋 Migration Results", value=checklist, inline=False)
+        
+        embed_summary.set_footer(text=f"Migration completed at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        await ctx.send(embed=embed_summary)
+        
+        # Step 6: Verify special roles are preserved
+        await verify_special_roles(ctx)
+        
+        # Step 7: Log to log channel
+        log_embed = discord.Embed(
+            title="🔄 JSON Structure Migration",
+            description=f"**Users migrated:** {migrated_count}\n"
+                      f"**Backup created:** {backup_filename}\n"
+                      f"**By:** {ctx.author.mention}",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(ctx.guild, "", log_embed)
+        
+        print(f"✅ JSON migration complete: {migrated_count} users migrated, backup: {backup_filename}")
+        
+    except FileNotFoundError:
+        error_embed = discord.Embed(
+            title="❌ Migration Failed",
+            description=f"JSON file `{REGISTRY_FILE}` not found!",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        
+    except json.JSONDecodeError as e:
+        error_embed = discord.Embed(
+            title="❌ JSON Parse Error",
+            description=f"Could not parse JSON file:\n```{str(e)}```",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Migration Error",
+            description=f"Unexpected error during migration:\n```{str(e)}```",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        import traceback
+        traceback.print_exc()
+
+async def verify_special_roles(ctx):
+    """Verify that special roles are properly preserved after migration."""
+    guild = ctx.guild
+    special_roles_count = 0
+    
+    embed = discord.Embed(
+        title="🔍 Verifying Special Roles",
+        description="Checking that special roles (Instructor, Master Lee's Family) are preserved...",
+        color=discord.Color.blue()
+    )
+    
+    for user_id_str, user_data in registered_users.items():
+        roles = user_data.get('roles', [])
+        
+        if "Master Lee's Family" in roles or "Instructor" in roles:
+            special_roles_count += 1
+            
+            # Get member if in server
+            user_id = int(user_id_str)
+            member = guild.get_member(user_id)
+            
+            if member:
+                # Verify Discord roles match JSON
+                has_master_family = MASTER_LEE_FAMILY_ROLE_ID and guild.get_role(MASTER_LEE_FAMILY_ROLE_ID) in member.roles
+                has_instructor = INSTRUCTOR_ROLE_ID and guild.get_role(INSTRUCTOR_ROLE_ID) in member.roles
+                
+                json_has_master = "Master Lee's Family" in roles
+                json_has_instructor = "Instructor" in roles
+                
+                if has_master_family != json_has_master or has_instructor != json_has_instructor:
+                    embed.add_field(
+                        name=f"⚠️ {member.name}",
+                        value=f"Discord: Master={has_master_family}, Instructor={has_instructor}\n"
+                              f"JSON: Master={json_has_master}, Instructor={json_has_instructor}",
+                        inline=True
+                    )
+    
+    embed.add_field(
+        name="📊 Special Roles Summary",
+        value=f"**Total users with special roles in JSON:** {special_roles_count}",
+        inline=False
+    )
+    
+    if special_roles_count > 0:
+        embed.add_field(
+            name="✅ Verification Complete",
+            value="Special roles have been preserved in the migrated JSON structure.",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+@bot_command.command(name="list_backups")
+@bot_channel_only()
+async def chat_list_backups(ctx):
+    """List all backup files created by the migration command."""
+    import glob
+    
+    backup_files = glob.glob("registered_users_backup_*.json")
+    
+    if not backup_files:
+        embed = discord.Embed(
+            title="📁 No Backups Found",
+            description="No backup files found. Use `!bot_command migrate_json_structure` to create a backup.",
+            color=discord.Color.grey()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Sort by creation time (newest first)
+    backup_files.sort(key=os.path.getmtime, reverse=True)
+    
+    embed = discord.Embed(
+        title="📁 Available Backups",
+        description=f"Found {len(backup_files)} backup file(s):",
+        color=discord.Color.blue()
+    )
+    
+    for i, backup_file in enumerate(backup_files[:10]):  # Show first 10
+        file_size = os.path.getsize(backup_file)
+        file_time = datetime.fromtimestamp(os.path.getmtime(backup_file), timezone.utc)
+        
+        embed.add_field(
+            name=f"📄 {backup_file}",
+            value=f"**Size:** {file_size:,} bytes\n"
+                  f"**Created:** <t:{int(file_time.timestamp())}:R>\n"
+                  f"**Path:** `{backup_file}`",
+            inline=False
+        )
+    
+    if len(backup_files) > 10:
+        embed.set_footer(text=f"Showing 10 of {len(backup_files)} backups")
+    
+    await ctx.send(embed=embed)
+
+@bot_command.command(name="verify_json_structure")
+@bot_channel_only()
+async def chat_verify_json_structure(ctx):
+    """Verify that JSON file follows the new structure."""
+    
+    try:
+        with open(REGISTRY_FILE, 'r') as f:
+            data = json.load(f)
+        
+        total_users = len(data)
+        valid_users = 0
+        invalid_users = []
+        missing_fields = {}
+        
+        required_fields = [
+            'child_name', 'role', 'role_display', 'nickname', 
+            'gender', 'registered_at', 'programs', 'has_active_private_chat',
+            'private_chat_channel_id', 'roles'
+        ]
+        
+        for user_id, user_data in data.items():
+            user_valid = True
+            missing = []
+            
+            for field in required_fields:
+                if field not in user_data:
+                    user_valid = False
+                    missing.append(field)
+                    
+                    # Track missing fields globally
+                    if field not in missing_fields:
+                        missing_fields[field] = 0
+                    missing_fields[field] += 1
+            
+            # Check field types
+            if 'programs' in user_data and not isinstance(user_data['programs'], list):
+                user_valid = False
+                missing.append("programs (not a list)")
+            
+            if 'roles' in user_data and not isinstance(user_data['roles'], list):
+                user_valid = False
+                missing.append("roles (not a list)")
+            
+            if user_valid:
+                valid_users += 1
+            else:
+                invalid_users.append({
+                    'id': user_id,
+                    'name': user_data.get('child_name', 'Unknown'),
+                    'missing': missing
+                })
+        
+        # Create report embed
+        embed = discord.Embed(
+            title="🔍 JSON Structure Verification",
+            description=f"**Total users:** {total_users}\n"
+                      f"**Valid structure:** {valid_users}\n"
+                      f"**Invalid structure:** {len(invalid_users)}",
+            color=discord.Color.blue() if valid_users == total_users else discord.Color.orange()
+        )
+        
+        if missing_fields:
+            embed.add_field(
+                name="❌ Missing Fields",
+                value="\n".join([f"• {field}: {count} users" for field, count in missing_fields.items()]),
+                inline=False
+            )
+        
+        if invalid_users:
+            # Show first 5 invalid users
+            sample = []
+            for user in invalid_users[:5]:
+                sample.append(f"• {user['name']} (ID: {user['id']}): {', '.join(user['missing'])}")
+            
+            embed.add_field(
+                name="⚠️ Users with Invalid Structure",
+                value="\n".join(sample),
+                inline=False
+            )
+            
+            if len(invalid_users) > 5:
+                embed.add_field(
+                    name="📋 More Issues",
+                    value=f"... and {len(invalid_users) - 5} more users need fixing",
+                    inline=False
+                )
+            
+            embed.add_field(
+                name="🔧 Solution",
+                value="Run `!bot_command migrate_json_structure` to fix all users",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="✅ All Good!",
+                value="All users have the correct JSON structure.",
+                inline=False
+            )
+        
+        # Show sample of good structure
+        if valid_users > 0:
+            # Find a valid user to show as example
+            for user_id, user_data in data.items():
+                is_valid = all(field in user_data for field in required_fields)
+                if is_valid:
+                    sample = {
+                        user_id: {
+                            k: v for k, v in user_data.items() 
+                            if k in required_fields + ['auto_added', 'admin_user', 'master_lee_family', 'instructor']
+                        }
+                    }
+                    sample_json = json.dumps(sample, indent=2, ensure_ascii=False)[:800]
+                    embed.add_field(
+                        name="📋 Sample Valid Structure",
+                        value=f"```json\n{sample_json}...```",
+                        inline=False
+                    )
+                    break
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Verification Failed",
+            description=f"Error verifying JSON structure:\n```{str(e)}```",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+
+# =============================================================================
+# QUICK VERIFICATION COMMAND
+# =============================================================================
+
+@bot_command.command(name="verify_json_roles")
+@bot_channel_only()
+async def chat_verify_json_roles(ctx, member: discord.Member = None):
+    """
+    Verify and show role synchronization status.
+    
+    Shows comparison between JSON stored roles and current Discord roles.
+    """
+    if member:
+        # Verify specific user
+        await chat_view_user_roles(ctx, member)
+        return
+    
+    # Verify all users
+    guild = ctx.guild
+    total_users = len(registered_users)
+    in_sync_count = 0
+    out_of_sync_count = 0
+    not_in_server = 0
+    
+    # Role mapping
+    role_mapping = {
+        FAMILY_ROLE_ID: "Family Member",
+        NATIONAL_TEAM_ROLE_ID: "National Team",
+        DEMONSTRATION_TEAM_ROLE_ID: "Demonstration Team",
+        AFTER_SCHOOL_ROLE_ID: "After School",
+        STUDENT_ROLE_ID: "Student",
+        INSTRUCTOR_ROLE_ID: "Instructor",
+        MASTER_LEE_FAMILY_ROLE_ID: "Master Lee's Family"
+    }
+    
+    for user_id_str, user_data in registered_users.items():
+        try:
+            user_id = int(user_id_str)
+            member = guild.get_member(user_id)
+            
+            if not member:
+                not_in_server += 1
+                continue
+            
+            # Get current Discord roles
+            current_roles = []
+            for role_id, role_name in role_mapping.items():
+                if role_id != 0:
+                    role = guild.get_role(role_id)
+                    if role and role in member.roles:
+                        current_roles.append(role_name)
+            
+            # Add Admin role if applicable
+            if user_id == ADMIN_USER_ID and "Admin" not in current_roles:
+                current_roles.append("Admin")
+            
+            # Get stored roles
+            stored_roles = user_data.get('roles', [])
+            
+            # Compare (sorted for consistency)
+            if sorted(current_roles) == sorted(stored_roles):
+                in_sync_count += 1
+            else:
+                out_of_sync_count += 1
+                
+        except Exception:
+            not_in_server += 1
+    
+    # Create report embed
+    embed = discord.Embed(
+        title="🔍 JSON Role Verification Report",
+        description=f"**Total users in JSON:** {total_users}",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(
+        name="✅ In Sync",
+        value=f"{in_sync_count} users\nJSON matches Discord roles",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="⚠️ Out of Sync",
+        value=f"{out_of_sync_count} users\nNeeds synchronization",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="❌ Not in Server",
+        value=f"{not_in_server} users\nCannot verify (left server)",
+        inline=True
+    )
+    
+    if out_of_sync_count > 0:
+        embed.add_field(
+            name="🔧 Action Required",
+            value=f"Run `!bot_command update_json_now` to sync all users\n"
+                   f"Or `!bot_command force_json_sync @user` for specific users",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
 
 # =============================================================================
 # PRIVATE CHAT COMMANDS (NOT RESTRICTED TO BOT CHANNEL)

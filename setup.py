@@ -50,12 +50,11 @@ setup_completed = False
 # ============================================================================
 # UTILITY FUNCTIONS AND CHECKS
 # ============================================================================
-
 def is_command_channel():
     """Decorator to restrict commands to the designated command channel.
     
-    Allows the setup_server command to be used anywhere for initial setup.
-    All other admin commands are restricted to the configured command channel.
+    Silently deletes ALL command messages if used in wrong channel.
+    Only !setup_server can be used anywhere.
     """
     async def predicate(ctx):
         # Allow !setup_server to be used anywhere by admin
@@ -65,12 +64,20 @@ def is_command_channel():
         # Get command channel ID from config
         command_channel_id = config.get('COMMAND_CHANNEL_ID')
         if not command_channel_id or command_channel_id == '0':
-            await ctx.send("❌ Command channel not set up yet. Please run !setup_server first.")
+            # Silently delete if no command channel set up yet
+            try:
+                await ctx.message.delete()
+            except:
+                pass
             return False
         
         # Check if current channel is the command channel
         if ctx.channel.id != int(command_channel_id):
-            await ctx.send(f"❌ This command can only be used in the command channel.")
+            # Silently delete command message
+            try:
+                await ctx.message.delete()
+            except:
+                pass
             return False
             
         return True
@@ -227,67 +234,48 @@ async def ensure_general_chat_mute_message_setup(guild: discord.Guild, general_c
         return
     
     try:
-        # Check existing pinned messages
-        pinned_messages = await general_chat.pins()
+        # Send temporary message while setting up
+        temp_msg = await general_chat.send("🔄 Setting up general chat permissions...")
         
-        # Look for our mute instruction message
-        mute_message_found = False
-        for pinned_msg in pinned_messages:
-            if pinned_msg.author == bot.user and pinned_msg.embeds:
-                for embed in pinned_msg.embeds:
-                    if embed.title and "general-chat" in embed.title.lower():
-                        mute_message_found = True
-                        break
-            if mute_message_found:
-                break
+        # COMBINED EMBED: How This Chat Works + How to Get Access
+        combined_embed = discord.Embed(
+            title="🔒 How to Access & Use General-Chat",
+            description=(
+                "**IMPORTANT:** Please Read Over Everything!\n\n"
+                "## 🔐 **HOW TO GET ACCESS**\n"
+                "### **Step 1: Mute This Channel:**\n"
+                "   📱 **On Mobile:**\n"
+                "   • Long-press on this channel name\n"
+                "   • Tap 'Mute Channel'\n"
+                "   • Select 'Until I turn it back on'\n\n"
+                "   💻 **On Desktop:**\n"
+                "   • Right-click on this channel\n"
+                "   • Click 'Mute Channel'\n"
+                "   • Select 'Until I turn it back on'\n\n"
+                "### **Step 2: Gain Typing Permission**\n"
+                "• React with 🔇 below to unlock typing permission\n"
+                "• This reaction grants you permission to type in this channel\n"
+                "• You only need to do this once\n\n"
+                "## ⚠️ **IMPORTANT NOTES**\n"
+                "• This is not group chat.\n"
+                "• It is for an individual who have questions for us.\n"
+            ),
+            color=discord.Color.red()
+        )
         
-        # Create and pin if not found
-        if not mute_message_found:
-            # Send temporary message while setting up
-            temp_msg = await general_chat.send("🔄 Setting up general chat permissions...")
-            
-            # COMBINED EMBED: How This Chat Works + How to Get Access
-            combined_embed = discord.Embed(
-                title="🔒 How to Access & Use General-Chat",
-                description=(
-                    "**IMPORTANT:** Please Read Over Everything!\n\n"
-                    "## 🔐 **HOW TO GET ACCESS**\n"
-                    "### **Step 1: Mute This Channel:**\n"
-                    "   📱 **On Mobile:**\n"
-                    "   • Long-press on this channel name\n"
-                    "   • Tap 'Mute Channel'\n"
-                    "   • Select 'Until I turn it back on'\n\n"
-                    "   💻 **On Desktop:**\n"
-                    "   • Right-click on this channel\n"
-                    "   • Click 'Mute Channel'\n"
-                    "   • Select 'Until I turn it back on'\n\n"
-                    "### **Step 2: Gain Typing Permission**\n"
-                    "• React with 🔇 below to unlock typing permission\n"
-                    "• This reaction grants you permission to type in this channel\n"
-                    "• You only need to do this once\n\n"
-                    "## ⚠️ **IMPORTANT NOTES**\n"
-                    "• This is not group chat.\n"
-                    "• It is for an individual who have questions for us.\n"
-                ),
-                color=discord.Color.red()
-            )
-            
-            # Add footer with reminder
-            combined_embed.set_footer(text="⬇️⬇️⬇️ REACT WITH 🔇 TO GAIN TYPING PERMISSION")
-            
-            # Send the combined message
-            mute_message = await general_chat.send(embed=combined_embed)
-            
-            # Add the reaction
-            await mute_message.add_reaction('🔇')
-            
-            # Pin the message
-            await mute_message.pin()
-            
-            # Delete temporary message
-            await temp_msg.delete()
-            
-            print("✅ Created and pinned combined general-chat instruction message")
+        # Add footer with reminder
+        combined_embed.set_footer(text="⬇️⬇️⬇️ REACT WITH 🔇 TO GAIN TYPING PERMISSION")
+        
+        # Send the combined message WITHOUT PINNING
+        mute_message = await general_chat.send(embed=combined_embed)
+        
+        # Add the reaction
+        await mute_message.add_reaction('🔇')
+        
+        # Delete temporary message
+        await temp_msg.delete()
+        
+        print("✅ Created general-chat instruction message (not pinned)")
             
     except Exception as e:
         print(f"❌ Error ensuring general-chat instruction message: {e}")
@@ -363,6 +351,74 @@ async def on_command_error(ctx, error):
         pass
     else:
         print(f"Error: {error}")
+
+async def setup_general_chat_button_message(guild: discord.Guild, general_chat: discord.TextChannel):
+    """
+    Set up the button message for private chat requests in general-chat.
+    
+    This replaces the old mute reaction system with a button system.
+    """
+    if not general_chat:
+        print("❌ General chat channel not found")
+        return
+    
+    try:
+        # Check existing messages for our button message
+        button_message_found = False
+        async for message in general_chat.history(limit=50):
+            if message.author == bot.user and message.components:
+                # Check if this message has our button
+                for action_row in message.components:
+                    for component in action_row.children:
+                        if component.custom_id == "request_private_chat":
+                            button_message_found = True
+                            break
+                if button_message_found:
+                    break
+        
+        # Create if not found
+        if not button_message_found:
+            # Send temporary message while setting up
+            temp_msg = await general_chat.send("🔄 Setting up chat system...")
+            
+            # Create the button message
+            embed = discord.Embed(
+                title="💬 Need to Talk to Us?",
+                description=(
+                    "**Click the button below to start a private conversation!**\n\n"
+                    "## 🔐 **HOW IT WORKS**\n"
+                    "1. Click the **📩 Request Private Chat** button below\n"
+                    "2. A private chat will be created just for you\n"
+                    "3. Only you and our admin can see it\n"
+                    "4. We'll respond to you in that private chat\n\n"
+                    "## ⚠️ **IMPORTANT NOTES**\n"
+                    "• Do not type in this channel\n"
+                    "• Use the button every time you need to talk to us\n"
+                    "• If you already have a private chat, clicking will just show you your existing chat\n"
+                    "• You can have multiple private chats for different topics\n"
+                ),
+                color=discord.Color.blue()
+            )
+            
+            # Create the button view
+            view = discord.ui.View(timeout=None)  # Permanent view
+            view.add_item(discord.ui.Button(
+                label="📩 Request Private Chat",
+                style=discord.ButtonStyle.primary,
+                custom_id="request_private_chat",
+                emoji="📩"
+            ))
+            
+            # Send the button message WITHOUT PINNING
+            button_message = await general_chat.send(embed=embed, view=view)
+            
+            # Delete temporary message
+            await temp_msg.delete()
+            
+            print("✅ Created private chat button message in general-chat (not pinned)")
+            
+    except Exception as e:
+        print(f"❌ Error setting up general-chat button message: {e}")
 
 # ============================================================================
 # ADMIN COMMANDS
@@ -781,6 +837,16 @@ async def setup_server(ctx):
                 reason="Role for instructors"
             )
             created_ids['INSTRUCTOR_ROLE_ID'] = str(instructor_role.id)
+
+            # 7. After School Role (for after school program participants)
+            after_school_role = await guild.create_role(
+                name="After School",
+                color=discord.Color.purple(),
+                hoist=True,
+                mentionable=True,
+                reason="Role for after school program participants"
+            )
+            created_ids['AFTER_SCHOOL_ROLE_ID'] = str(after_school_role.id)
             
             await ctx.send("✅ **Roles created:** Master Lee's Family, Family Member, National Team, Demonstration Team, Student, Instructor")
             
@@ -1050,12 +1116,49 @@ async def setup_server(ctx):
                 manage_messages=True,
                 read_message_history=True
             )
+            # Add after school announcement channel in ANNOUNCEMENTS category
+            after_school_channel = await announcements_category.create_text_channel(
+                name="after-school-announcements",
+                topic="After school program announcements and updates - After School: read-only",
+                reason="After school program announcements"
+            )
+            created_ids['AFTER_SCHOOL_CHANNEL_ID'] = str(after_school_channel.id)
+
+            # Set permissions for after-school-announcements (After School role only, read-only)
+            await after_school_channel.set_permissions(guild.default_role,
+                read_messages=False,
+                send_messages=False
+            )
+            await after_school_channel.set_permissions(after_school_role,
+                read_messages=True,
+                send_messages=False,  # read-only
+                read_message_history=True
+            )
+            await after_school_channel.set_permissions(master_lee_family_role,
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                read_message_history=True
+            )
+            # Bot also needs access
+            await after_school_channel.set_permissions(guild.me,
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                read_message_history=True
+            )
+            await after_school_channel.set_permissions(instructor_role,
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                read_message_history=True
+            )
 
             # 5. 💭 TEXT CHANNELS Category
             # a) general-chat (HIDDEN until registration - only visible after getting Family Member role)
             general_chat = await text_channels_category.create_text_channel(
                 name="general-chat",
-                topic="General chat for family members - Visible only after completing registration",
+                topic="General chat for family members - Click the button to request a private chat with us!",
                 reason="General chat channel - Hidden until registration"
             )
             created_ids['GENERAL_CHAT_CHANNEL_ID'] = str(general_chat.id)
@@ -1094,19 +1197,23 @@ async def setup_server(ctx):
                 read_message_history=True
             )
 
-            # Family Member role CAN see by default but CANNOT send by default (will be enabled after mute reaction)
+            # Family Member role CAN see by default but CANNOT send messages (only button)
             await general_chat.set_permissions(family_role,
                 read_messages=True,      # Can view the channel
-                send_messages=False,     # Cannot send until they react with 🔇
+                send_messages=False,     # Cannot send messages at all
                 view_channel=True,       # Can see the channel
-                read_message_history=True
+                read_message_history=True,
+                add_reactions=False      # Cannot add reactions either
             )
+
             await general_chat.set_permissions(student_role,
                 read_messages=True,      # Can view the channel
-                send_messages=False,     # Cannot send until they react with 🔇 (same as Family Member)
+                send_messages=False,     # Cannot send messages at all (same as Family Member)
                 view_channel=True,       # Can see the channel
-                read_message_history=True
+                read_message_history=True,
+                add_reactions=False      # Cannot add reactions either
             )
+
             await general_chat.set_permissions(instructor_role,
                 read_messages=True,
                 send_messages=True,      # Can send by default
@@ -1114,7 +1221,8 @@ async def setup_server(ctx):
                 read_message_history=True
             )
 
-            await ensure_general_chat_mute_message_setup(ctx.guild, general_chat, family_role)
+            # Set up the button message for private chat requests
+            await setup_general_chat_button_message(guild, general_chat)
             
             # 6. 🤖 BOT Category - All channels visible only to admin user
             # a) command (Admin only)
@@ -1952,7 +2060,7 @@ async def reset_setup(ctx):
                     pass
         
         # Delete roles (except @everyone)
-        roles_to_delete = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team", "Student", "Instructor"]
+        roles_to_delete = ["Master Lee's Family", "Family Member", "National Team", "Demonstration Team", "Student", "Instructor", "After School"]
 
         for role_name in roles_to_delete:
             role = discord.utils.get(guild.roles, name=role_name)
@@ -1969,7 +2077,8 @@ async def reset_setup(ctx):
             'NATIONAL_TEAM_ROLE_ID', 'DEMONSTRATION_TEAM_ROLE_ID',
             'NATIONAL_TEAM_CHANNEL_ID', 'DEMONSTRATION_TEAM_CHANNEL_ID',
             'GENERAL_CHAT_CHANNEL_ID', 'MASTER_LEE_FAMILY_ROLE_ID',
-            'STUDENT_ROLE_ID', 'INSTRUCTOR_ROLE_ID',
+            'STUDENT_ROLE_ID', 'INSTRUCTOR_ROLE_ID', 'AFTER_SCHOOL_ROLE_ID',  # Add this
+            'AFTER_SCHOOL_CHANNEL_ID',  # Add this too
             'TEMPORARY_CHANNELS_CATEGORY_ID', 'ADMIN_CHAT_CHANNEL_ID',
             'LOG_CHANNEL_ID', 'SCHEDULE_CHANNEL_ID', 'COMMAND_CHANNEL_ID',
             'GENERAL_ANNOUNCEMENT_CHANNEL_ID', 'WELCOME_CHANNEL_ID',
@@ -2068,4 +2177,3 @@ if __name__ == "__main__":
         print("   Please check your token in config.txt")
     except Exception as e:
         print(f"❌ ERROR starting bot: {e}")
-
