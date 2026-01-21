@@ -3740,8 +3740,8 @@ async def chat_command(ctx):
     embed = discord.Embed(
         title="💬 **ADMIN BOT COMMANDS**",
         description="**All commands must be used in this channel only.**\n\n"
-                   "Use `!bot_command chat [command_name]` or `!bot_command [command_name]`\n"
-                   "**Example:** `!bot_command chat view_user @user`\n",
+                   "Use `!bot_command [command_name]`\n"
+                   "**Example:** `!bot_command view_user @user`\n",
         color=discord.Color.blue()
     )
     
@@ -3751,27 +3751,21 @@ async def chat_command(ctx):
         value=(
             "`active_private_chats` - Show all active private chats with activity status\n"
             "`active_chats` - Show active 1-on-1 conversations\n"
-            "`register_stats` - Show registration statistics with charts\n"
-            "`system_status` - Complete bot health and system status\n"
-            "`monitor_activity @user` - Live monitor user activity\n"
+            "`register_stats` - Show registration statistics\n"
         ),
         inline=False
     )
     
-    # Section 2: USER MANAGEMENT (UPDATED)
+    # Section 2: USER MANAGEMENT
     embed.add_field(
         name="👤 **USER MANAGEMENT**",
         value=(
             "`view_user @user` - Complete user profile with all data\n"
             "`view_user_roles @user` - View JSON vs Discord role comparison\n"
-            "`edit_user @user field:value` - Edit any user field\n"
             "`send_dm @user message` - Send direct message to user\n"
-            "`assign_role @user role_type` - Assign specific role\n"
-            "`update_discord_roles @user` - Update JSON from current Discord roles\n"
-            "`update_roles @user` - Sync Discord roles with JSON\n"
-            "`force_register @user` - Force registration for user\n"
-            "`reset_user @user` - Reset user registration data\n"
-            "`view_json_data @user` - View raw JSON data\n"
+            "`assign_role @user add/remove role` - Add/remove any role (national_team, demonstration_team, after_school, student, instructor, master_family)\n"
+            "`fix_name @user new_name` - Fix user's registered name\n"
+            "`remove_check @user` - Remove user's green check\n"
         ),
         inline=False
     )
@@ -3780,13 +3774,7 @@ async def chat_command(ctx):
     embed.add_field(
         name="🔒 **PRIVATE CHAT MANAGEMENT**",
         value=(
-            "`cleanup_private_chats` - Bulk delete ALL private chats\n"
             "`resend_delete_button #channel` - Fix delete button in channel\n"
-            "`close_chat #channel` - Close specific private chat\n"
-            "`archive_inactive` - Archive chats inactive >7 days\n"
-            "`chat_history #channel` - View chat message history\n"
-            "`export_chat #channel` - Export chat to text file\n"
-            "`monitor_chat #channel` - Live monitor chat activity\n"
         ),
         inline=False
     )
@@ -3795,27 +3783,17 @@ async def chat_command(ctx):
     embed.add_field(
         name="🎭 **ROLE MANAGEMENT**",
         value=(
-            "`assign_master_lee_family @user` - Assign Master Lee's Family role\n"
-            "`assign_instructor @user` - Assign Instructor role\n"
-            "`assign_both_roles @user` - Assign both special roles\n"
-            "`remove_role @user role_type` - Remove specific role\n"
-            "`list_special_roles` - List all special role members\n"
-            "`role_audit @user` - Full role audit for user\n"
+            "`remove_role @user role_type` - Remove special role (instructor, master_family, both)\n"
         ),
         inline=False
     )
     
-    # Section 5: REGISTRATION SYSTEM
+    # Section 5: REGISTRATION & CONSISTENCY
     embed.add_field(
-        name="📝 **REGISTRATION SYSTEM**",
+        name="📝 **REGISTRATION & CONSISTENCY**",
         value=(
-            "`fix_name @user new_name` - Fix user's registered name\n"
-            "`add_programs @user programs` - Add programs to user\n"
-            "`remove_programs @user programs` - Remove programs\n"
-            "`transfer_registration @old @new` - Transfer registration\n"
-            "`update_registration @user` - Update registration details\n"
             "`check_consistency` - Check registry/green check consistency\n"
-            "`verify_registration @user` - Verify registration completion\n"
+            "`force_register` - Force start registration for yourself\n"
         ),
         inline=False
     )
@@ -3824,13 +3802,11 @@ async def chat_command(ctx):
     embed.add_field(
         name="💾 **DATA MANAGEMENT**",
         value=(
-            "`backup_registry` - Create registry backup\n"
-            "`restore_registry backup_file` - Restore from backup\n"
+            "`view_json_data @user` - View raw JSON data for user\n"
             "`cleanup_json` - Clean orphaned JSON entries\n"
-            "`export_registry` - Export registry to CSV\n"
-            "`import_registry file` - Import from CSV\n"
-            "`search_users query` - Search users by name/role\n"
-            "`batch_update field=value` - Batch update users\n"
+            "`migrate_json_structure` - Migrate JSON to new structure with backup\n"
+            "`list_backups` - List all backup files\n"
+            "`verify_json_structure` - Verify JSON structure\n"
         ),
         inline=False
     )
@@ -3843,26 +3819,23 @@ async def chat_command(ctx):
             "`setup_bot_channel` - Create bot command channel\n"
             "`setup_log_channel` - Create log channel\n"
             "`clear_chats` - Clear active conversations\n"
-            "`remove_check @user` - Remove user's green check\n"
             "`update_message_id ID` - Update rules message ID\n"
-            "`cleanup_orphaned_data` - Clean up orphaned data\n"
-            "`reinitialize_buttons` - Reinitialize all bot buttons\n"
+            "`clear_channel [#channel]` - Clear ALL messages in a channel\n"
         ),
         inline=False
     )
     
-    # Section 8: JSON SYNCHRONIZATION (UPDATED)
+    # Section 8: JSON SYNCHRONIZATION
     embed.add_field(
         name="🔄 **JSON SYNCHRONIZATION**",
         value=(
-            "`apply_json_roles` - Update Discord roles from JSON file\n"
-            "`update_json_now` - Force immediate JSON sync\n"
+            "`update_discord_roles` - Update Discord roles from JSON file (for ALL users)\n"
+            "`update_json_roles` - Force immediate JSON sync\n"
             "`force_json_sync @user` - Force sync for specific user\n"
             "`json_task_status` - Show JSON task status\n"
             "`start_json_task` - Start JSON sync task\n"
             "`stop_json_task` - Stop JSON sync task\n"
             "`verify_json_roles @user` - Verify JSON role sync\n"
-            "`fix_json_inconsistencies` - Fix JSON inconsistencies\n"
         ),
         inline=False
     )
@@ -3871,43 +3844,17 @@ async def chat_command(ctx):
     embed.add_field(
         name="🐛 **TESTING & DEBUGGING**",
         value=(
-            "`test_button` - Test delete button functionality\n"
-            "`test_reaction` - Test reaction detection\n"
             "`debug_ids` - Show all configuration IDs\n"
             "`check_message ID` - Check message reactions\n"
-            "`simulate_join @user` - Simulate user joining\n"
-            "`simulate_leave @user` - Simulate user leaving\n"
-            "`test_dm_flow` - Test DM registration flow\n"
-            "`debug_webhook` - Test webhook functionality\n"
         ),
         inline=False
     )
     
-    # Section 10: REPORTS & ANALYTICS
+    # Section 10: PUBLIC COMMANDS
     embed.add_field(
-        name="📈 **REPORTS & ANALYTICS**",
+        name="🌐 **PUBLIC COMMANDS**",
         value=(
-            "`export_activity` - Export activity logs\n"
-            "`generate_report` - Generate system report\n"
-            "`audit_log days=7` - Show recent system events\n"
-            "`usage_statistics` - Show command usage stats\n"
-            "`performance_metrics` - Show bot performance\n"
-            "`error_logs` - View error logs\n"
-            "`daily_summary` - Generate daily summary\n"
-        ),
-        inline=False
-    )
-    
-    # Section 11: QUICK ACTIONS
-    embed.add_field(
-        name="⚡ **QUICK ACTIONS**",
-        value=(
-            "`quick_close @user` - Quick close user's private chat\n"
-            "`quick_message @user msg` - Quick DM to user\n"
-            "`quick_role @user role` - Quick role assignment\n"
-            "`quick_backup` - Quick registry backup\n"
-            "`quick_stats` - Quick statistics\n"
-            "`quick_check @user` - Quick user check\n"
+            "`!force_register` - Force start registration for yourself\n"
         ),
         inline=False
     )
@@ -3964,104 +3911,6 @@ async def chat_active_private_chats(ctx):
             )
     
     await ctx.send(embed=embed)
-
-@bot_command.command(name="cleanup_private_chats")
-@bot_channel_only()
-async def chat_cleanup_private_chats(ctx):
-    """Bulk delete all private chats with confirmation."""
-    count = len(private_channels)
-    
-    if count == 0:
-        await ctx.send("✅ No private chats to clean up.", ephemeral=True)
-        return
-    
-    class ConfirmCleanupView(discord.ui.View):
-        """Confirmation view for bulk chat cleanup."""
-        
-        def __init__(self):
-            super().__init__(timeout=60)
-            self.confirmed = False
-        
-        @discord.ui.button(label="✅ Yes, Delete All", style=discord.ButtonStyle.danger)
-        async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if interaction.user.id != ADMIN_USER_ID:
-                await interaction.response.send_message("❌ Only admin can perform this action.", ephemeral=True)
-                return
-            
-            self.confirmed = True
-            self.stop()
-            
-            # Delete all channels
-            channels_deleted = 0
-            channels_to_delete = list(private_channels.keys())
-            
-            for channel_id in channels_to_delete:
-                channel = ctx.guild.get_channel(channel_id)
-                if channel:
-                    try:
-                        await channel.delete(reason="Bulk cleanup by admin")
-                        channels_deleted += 1
-                    except:
-                        pass
-            
-            # Clear tracking data
-            private_channels.clear()
-            user_private_channels.clear()
-            
-            # Send confirmation
-            await interaction.response.send_message(
-                f"✅ Deleted {channels_deleted} private chats.",
-                ephemeral=True
-            )
-            
-            # Log bulk cleanup
-            embed = discord.Embed(
-                title="🗑️ Bulk Private Chat Cleanup",
-                description=f"**Deleted:** {channels_deleted} private chats\n"
-                          f"**By:** {interaction.user.mention}\n"
-                          f"**Time:** <t:{int(time.time())}:R>",
-                color=discord.Color.red(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            await send_to_log_channel(ctx.guild, "", embed)
-            
-            # Update original message
-            embed = discord.Embed(
-                title="✅ Cleanup Complete",
-                description=f"Deleted {channels_deleted} private chats.",
-                color=discord.Color.green()
-            )
-            await interaction.message.edit(embed=embed, view=None)
-        
-        @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
-        async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if interaction.user.id != ADMIN_USER_ID:
-                await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
-                return
-            
-            self.confirmed = False
-            self.stop()
-            
-            await interaction.response.send_message("❌ Cleanup cancelled.", ephemeral=True)
-            
-            embed = discord.Embed(
-                title="❌ Cleanup Cancelled",
-                description="No channels were deleted.",
-                color=discord.Color.grey()
-            )
-            await interaction.message.edit(embed=embed, view=None)
-    
-    # Show confirmation prompt
-    embed = discord.Embed(
-        title="🧹 Cleanup Private Chats",
-        description=f"This will delete **{count}** private chats.\n\n"
-                   f"**Are you sure?** This action cannot be undone!\n"
-                   f"All messages in these chats will be lost.",
-        color=discord.Color.red()
-    )
-    
-    view = ConfirmCleanupView()
-    await ctx.send(embed=embed, view=view)
 
 @bot_command.command(name="resend_delete_button")
 @bot_channel_only()
@@ -4157,14 +4006,6 @@ async def chat_clear_chats(ctx):
     )
     await ctx.send(embed=embed)
 
-@bot_command.command(name="test_reaction")
-@bot_channel_only()
-async def chat_test_reaction(ctx):
-    """Test reaction detection functionality."""
-    test_msg = await ctx.send("Test message - react with ✅ to see if bot detects it!")
-    await test_msg.add_reaction('✅')
-    await ctx.send(f"Test message ID: `{test_msg.id}` - try reacting with ✅!")
-
 @bot_command.command(name="debug_ids")
 @bot_channel_only()
 async def chat_debug_ids(ctx):
@@ -4222,16 +4063,6 @@ async def chat_check_message(ctx, message_id: int = None):
         await ctx.send("❌ No permission to read this message!")
     except Exception as e:
         await ctx.send(f"❌ Error: {e}")
-
-@bot_command.command(name="assign_role")
-@bot_channel_only()
-async def chat_assign_role(ctx, member: discord.Member):
-    """Manually assign Family Member role to a user."""
-    success = await assign_family_role(member)
-    if success:
-        await ctx.send(f"✅ Assigned Family Member role to {member.mention}")
-    else:
-        await ctx.send(f"❌ Failed to assign role to {member.mention}")
 
 @bot_command.command(name="update_message_id")
 @bot_channel_only()
@@ -4451,7 +4282,7 @@ async def chat_view_json_data(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed, ephemeral=True)
 
-@bot_command.command(name="apply_json_roles")
+@bot_command.command(name="update_discord_roles")
 @bot_channel_only()
 async def chat_update_roles_from_json(ctx):
     """
@@ -4606,17 +4437,19 @@ async def chat_update_roles_from_json(ctx):
     )
     await send_to_log_channel(guild, "", log_embed)
 
-@bot_command.command(name="adjust_role")
+@bot_command.command(name="assign_role")
 @bot_channel_only()
-async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_type_input: str):
+async def chat_assign_role(ctx, member: discord.Member, action: str, *, role_type_input: str):
     """
     Add or remove a role from a user and update JSON immediately.
     
     Usage:
-    !bot_command adjust_role @user add national_team
-    !bot_command adjust_role @user remove after_school
-    !bot_command adjust_role @user add "demonstration team"
-    
+    !bot_command assign_role @user add national_team
+    !bot_command assign_role @user remove after_school
+    !bot_command assign_role @user add "demonstration team"
+    !bot_command assign_role @user add master_family
+    !bot_command assign_role @user add instructor
+
     Role Types:
     - family_member: Family Member role
     - national_team: National Team role
@@ -4727,6 +4560,12 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
             'name': "Master Lee's Family",
             'json_name': "Master Lee's Family",
             'requires_discord': True
+        },
+        'master_lee_family': {
+            'id': MASTER_LEE_FAMILY_ROLE_ID,
+            'name': "Master Lee's Family",
+            'json_name': "Master Lee's Family",
+            'requires_discord': True
         }
     }
     
@@ -4762,9 +4601,49 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
     
     user_id_str = str(member.id)
     
-    # Check if user exists in JSON
+    # SPECIAL HANDLING FOR MASTER LEE'S FAMILY AND INSTRUCTOR ROLES
+    # Create JSON entry if it doesn't exist for these special roles
+    if role_type in ['master_family', 'master', 'master_lee', 'master_lee_family', 'instructor']:
+        if user_id_str not in registered_users:
+            # Create a proper JSON entry for the user
+            if role_type.startswith('master'):
+                # Master Lee's Family member
+                registered_users[user_id_str] = {
+                    'child_name': member.name,
+                    'role': "Master Lee's Family",
+                    'role_display': "👑 Master Lee's Family",
+                    'nickname': member.display_name,
+                    'gender': 'master_family',
+                    'programs': [],
+                    'registered_at': discord.utils.utcnow().isoformat(),
+                    'has_active_private_chat': False,
+                    'private_chat_channel_id': None,
+                    'roles': [json_role_name],
+                    'master_lee_family': True,
+                    'auto_added': True
+                }
+                print(f"✅ Created JSON entry for Master Lee's Family member: {member.name}")
+            elif role_type == 'instructor':
+                # Instructor
+                registered_users[user_id_str] = {
+                    'child_name': member.name,
+                    'role': 'Instructor',
+                    'role_display': '👨‍🏫 Instructor',
+                    'nickname': member.display_name,
+                    'gender': 'instructor',
+                    'programs': [],
+                    'registered_at': discord.utils.utcnow().isoformat(),
+                    'has_active_private_chat': False,
+                    'private_chat_channel_id': None,
+                    'roles': [json_role_name],
+                    'instructor': True,
+                    'auto_added': True
+                }
+                print(f"✅ Created JSON entry for Instructor: {member.name}")
+    
+    # Check if user exists in JSON (general case)
     if user_id_str not in registered_users:
-        # Create entry if not exists
+        # Create entry if not exists for other roles
         registered_users[user_id_str] = {
             'child_name': member.name,
             'role': 'Admin-Assigned',
@@ -4799,6 +4678,32 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
                     await member.add_roles(discord_role, reason=f"Role added by admin {ctx.author.name}")
                     discord_changes.append(f"➕ Added {role_display} Discord role")
                     changes_made = True
+                    
+                    # ADD GREEN CHECK MARK FOR MASTER LEE'S FAMILY AND INSTRUCTOR
+                    if role_type in ['master_family', 'master', 'master_lee', 'master_lee_family', 'instructor']:
+                        try:
+                            rules_channel = ctx.guild.get_channel(RULES_CHANNEL_ID)
+                            if rules_channel:
+                                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
+                                # Check if user already has green check
+                                has_reaction = False
+                                for reaction in rules_message.reactions:
+                                    if str(reaction.emoji) == '✅':
+                                        async for user in reaction.users():
+                                            if user.id == member.id:
+                                                has_reaction = True
+                                                break
+                                    if has_reaction:
+                                        break
+                                
+                                if not has_reaction:
+                                    await rules_message.add_reaction('✅')
+                                    discord_changes.append(f"✅ Added green check mark")
+                                    print(f"✅ Added green check mark for {member.name}")
+                        except Exception as e:
+                            print(f"⚠️ Could not add green check reaction: {e}")
+                            discord_changes.append(f"⚠️ Could not add green check: {e}")
+                    
                 except Exception as e:
                     error_msg = f"⚠️ Could not add Discord role: {e}"
                     await ctx.send(error_msg, ephemeral=True)
@@ -4815,6 +4720,12 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
             user_data['roles'] = current_roles
             json_changes.append(f"➕ Added {role_display} to JSON roles")
             changes_made = True
+            
+            # Set special flags
+            if role_type.startswith('master'):
+                user_data['master_lee_family'] = True
+            elif role_type == 'instructor':
+                user_data['instructor'] = True
         else:
             json_changes.append(f"✅ Already has {role_display} in JSON roles")
         
@@ -4855,6 +4766,12 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
             user_data['roles'] = current_roles
             json_changes.append(f"➖ Removed {role_display} from JSON roles")
             changes_made = True
+            
+            # Clear special flags
+            if role_type.startswith('master'):
+                user_data['master_lee_family'] = False
+            elif role_type == 'instructor':
+                user_data['instructor'] = False
         else:
             json_changes.append(f"✅ Already missing {role_display} from JSON roles")
         
@@ -4910,13 +4827,21 @@ async def chat_adjust_role(ctx, member: discord.Member, action: str, *, role_typ
         inline=True
     )
     
-    # Show Discord roles for comparison
-    discord_role_names = [role.name for role in member.roles if role.name != "@everyone"]
-    embed.add_field(
-        name="🔄 Current Discord Roles",
-        value=", ".join(discord_role_names[:10]) if discord_role_names else "None",
-        inline=False
-    )
+    # Show special flags
+    special_flags = []
+    if user_data.get('master_lee_family'):
+        special_flags.append("Master Lee's Family")
+    if user_data.get('instructor'):
+        special_flags.append("Instructor")
+    if user_data.get('admin_assigned'):
+        special_flags.append("Admin-Assigned")
+    
+    if special_flags:
+        embed.add_field(
+            name="🏷️ Special Flags",
+            value=", ".join(special_flags),
+            inline=False
+        )
     
     embed.set_footer(text=f"Updated by {ctx.author.name}")
     
@@ -5022,35 +4947,6 @@ async def chat_remove_check(ctx, member: discord.Member):
         await ctx.send("❌ Could not find green check mark reaction")
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
-
-@bot_command.command(name="update_discord_roles")
-@bot_channel_only()
-async def chat_update_discord_roles(ctx, member: discord.Member):
-    """Update a user's stored JSON roles from their current Discord roles."""
-    user_id_str = str(member.id)
-    
-    if user_id_str not in registered_users:
-        await ctx.send(f"❌ {member.mention} is not registered in the system!", ephemeral=True)
-        return
-    
-    await update_user_roles_in_json(member.id, member)
-    
-    # Get updated data
-    stored_roles = registered_users[user_id_str].get('roles', [])
-    
-    embed = discord.Embed(
-        title="✅ JSON Roles Updated",
-        description=f"Updated {member.mention}'s stored JSON roles to match Discord.",
-        color=discord.Color.green()
-    )
-    
-    embed.add_field(
-        name="📋 Now Stored in JSON",
-        value="\n".join([f"• {role}" for role in stored_roles]) if stored_roles else "No roles",
-        inline=False
-    )
-    
-    await ctx.send(embed=embed, ephemeral=True)
 
 @bot_command.command(name="view_user_roles")
 @bot_channel_only()
@@ -5283,7 +5179,7 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
 # AUTO-PIN BOT COMMAND ON STARTUP
 # =============================================================================
 
-async def auto_pin_bot_command():
+async def auto_setup_command_chat():
     """
     Automatically send and pin the bot command help message on startup.
     Only creates if not already exists.
@@ -5366,91 +5262,74 @@ def create_bot_commands_embed():
         color=discord.Color.blue()
     )
     
-    # Add all sections (same as in chat_command function)
+    # Section 1: REAL-TIME MONITORING
     embed.add_field(
         name="📊 **REAL-TIME MONITORING**",
         value=(
             "`active_private_chats` - Show all active private chats with activity status\n"
             "`active_chats` - Show active 1-on-1 conversations\n"
-            "`register_stats` - Show registration statistics with charts\n"
-            "`system_status` - Complete bot health and system status\n"
-            "`monitor_activity @user` - Live monitor user activity\n"
+            "`register_stats` - Show registration statistics\n"
         ),
         inline=False
     )
     
+    # Section 2: USER MANAGEMENT
     embed.add_field(
         name="👤 **USER MANAGEMENT**",
         value=(
             "`view_user @user` - Complete user profile with all data\n"
             "`view_user_roles @user` - View JSON vs Discord role comparison\n"
-            "`edit_user @user field:value` - Edit any user field\n"
             "`send_dm @user message` - Send direct message to user\n"
-            "`assign_role @user role_type` - Assign specific role\n"
+            "`assign_role @user add/remove role` - Add/remove any role (national_team, demonstration_team, after_school, student, instructor, master_family)\n"
             "`update_discord_roles @user` - Update JSON from current Discord roles\n"
-            "`update_roles @user` - Sync Discord roles with JSON\n"
-            "`force_register @user` - Force registration for user\n"
-            "`reset_user @user` - Reset user registration data\n"
-            "`view_json_data @user` - View raw JSON data\n"
+            "`fix_name @user new_name` - Fix user's registered name\n"
+            "`remove_check @user` - Remove user's green check\n"
         ),
         inline=False
     )
     
+    # Section 3: PRIVATE CHAT MANAGEMENT
     embed.add_field(
         name="🔒 **PRIVATE CHAT MANAGEMENT**",
         value=(
-            "`cleanup_private_chats` - Bulk delete ALL private chats\n"
             "`resend_delete_button #channel` - Fix delete button in channel\n"
-            "`close_chat #channel` - Close specific private chat\n"
-            "`archive_inactive` - Archive chats inactive >7 days\n"
-            "`chat_history #channel` - View chat message history\n"
-            "`export_chat #channel` - Export chat to text file\n"
-            "`monitor_chat #channel` - Live monitor chat activity\n"
         ),
         inline=False
     )
     
+    # Section 4: ROLE MANAGEMENT
     embed.add_field(
         name="🎭 **ROLE MANAGEMENT**",
         value=(
-            "`assign_master_lee_family @user` - Assign Master Lee's Family role\n"
-            "`assign_instructor @user` - Assign Instructor role\n"
-            "`assign_both_roles @user` - Assign both special roles\n"
-            "`remove_role @user role_type` - Remove specific role\n"
-            "`list_special_roles` - List all special role members\n"
-            "`role_audit @user` - Full role audit for user\n"
+            "`remove_role @user role_type` - Remove special role (instructor, master_family, both)\n"
         ),
         inline=False
     )
     
+    # Section 5: REGISTRATION & CONSISTENCY
     embed.add_field(
-        name="📝 **REGISTRATION SYSTEM**",
+        name="📝 **REGISTRATION & CONSISTENCY**",
         value=(
-            "`fix_name @user new_name` - Fix user's registered name\n"
-            "`add_programs @user programs` - Add programs to user\n"
-            "`remove_programs @user programs` - Remove programs\n"
-            "`transfer_registration @old @new` - Transfer registration\n"
-            "`update_registration @user` - Update registration details\n"
             "`check_consistency` - Check registry/green check consistency\n"
-            "`verify_registration @user` - Verify registration completion\n"
+            "`force_register` - Force start registration for yourself\n"
         ),
         inline=False
     )
     
+    # Section 6: DATA MANAGEMENT
     embed.add_field(
         name="💾 **DATA MANAGEMENT**",
         value=(
-            "`backup_registry` - Create registry backup\n"
-            "`restore_registry backup_file` - Restore from backup\n"
+            "`view_json_data @user` - View raw JSON data for user\n"
             "`cleanup_json` - Clean orphaned JSON entries\n"
-            "`export_registry` - Export registry to CSV\n"
-            "`import_registry file` - Import from CSV\n"
-            "`search_users query` - Search users by name/role\n"
-            "`batch_update field=value` - Batch update users\n"
+            "`migrate_json_structure` - Migrate JSON to new structure with backup\n"
+            "`list_backups` - List all backup files\n"
+            "`verify_json_structure` - Verify JSON structure\n"
         ),
         inline=False
     )
     
+    # Section 7: SYSTEM & MAINTENANCE
     embed.add_field(
         name="🛠️ **SYSTEM & MAINTENANCE**",
         value=(
@@ -5458,81 +5337,115 @@ def create_bot_commands_embed():
             "`setup_bot_channel` - Create bot command channel\n"
             "`setup_log_channel` - Create log channel\n"
             "`clear_chats` - Clear active conversations\n"
-            "`remove_check @user` - Remove user's green check\n"
             "`update_message_id ID` - Update rules message ID\n"
-            "`cleanup_orphaned_data` - Clean up orphaned data\n"
-            "`reinitialize_buttons` - Reinitialize all bot buttons\n"
+            "`clear_channel [#channel]` - Clear ALL messages in a channel\n"
         ),
         inline=False
     )
     
+    # Section 8: JSON SYNCHRONIZATION
     embed.add_field(
         name="🔄 **JSON SYNCHRONIZATION**",
         value=(
-            "`apply_json_roles` - Update Discord roles from JSON file\n"
-            "`update_json_now` - Force immediate JSON sync\n"
+            "`update_discord_roles` - Update Discord roles from JSON file (for ALL users)\n"
+            "`update_json_roles` - Force immediate JSON sync\n"
             "`force_json_sync @user` - Force sync for specific user\n"
             "`json_task_status` - Show JSON task status\n"
             "`start_json_task` - Start JSON sync task\n"
             "`stop_json_task` - Stop JSON sync task\n"
             "`verify_json_roles @user` - Verify JSON role sync\n"
-            "`fix_json_inconsistencies` - Fix JSON inconsistencies\n"
         ),
         inline=False
     )
     
+    # Section 9: TESTING & DEBUGGING
     embed.add_field(
         name="🐛 **TESTING & DEBUGGING**",
         value=(
-            "`test_button` - Test delete button functionality\n"
-            "`test_reaction` - Test reaction detection\n"
             "`debug_ids` - Show all configuration IDs\n"
             "`check_message ID` - Check message reactions\n"
-            "`simulate_join @user` - Simulate user joining\n"
-            "`simulate_leave @user` - Simulate user leaving\n"
-            "`test_dm_flow` - Test DM registration flow\n"
-            "`debug_webhook` - Test webhook functionality\n"
         ),
         inline=False
     )
     
+    # Section 10: PUBLIC COMMANDS
     embed.add_field(
-        name="📈 **REPORTS & ANALYTICS**",
+        name="🌐 **PUBLIC COMMANDS**",
         value=(
-            "`export_activity` - Export activity logs\n"
-            "`generate_report` - Generate system report\n"
-            "`audit_log days=7` - Show recent system events\n"
-            "`usage_statistics` - Show command usage stats\n"
-            "`performance_metrics` - Show bot performance\n"
-            "`error_logs` - View error logs\n"
-            "`daily_summary` - Generate daily summary\n"
-        ),
-        inline=False
-    )
-    
-    embed.add_field(
-        name="⚡ **QUICK ACTIONS**",
-        value=(
-            "`quick_close @user` - Quick close user's private chat\n"
-            "`quick_message @user msg` - Quick DM to user\n"
-            "`quick_role @user role` - Quick role assignment\n"
-            "`quick_backup` - Quick registry backup\n"
-            "`quick_stats` - Quick statistics\n"
-            "`quick_check @user` - Quick user check\n"
+            "`!force_register` - Force start registration for yourself\n"
         ),
         inline=False
     )
     
     embed.set_footer(
-        text="🚀 Bot v2.0.0 | Commands only work in bot-commands channel | Prefix: ! | Auto-pinned on startup"
+        text="🚀 Bot v2.0.0 | Commands only work in bot-commands channel | Prefix: !"
     )
     
     return embed
 
+async def auto_setup_general_chat_button():
+    """
+    Automatically send the private chat request button message in general-chat on startup.
+    Only creates if not already exists.
+    """
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print("❌ Guild not found for auto-setting up general-chat button")
+        return
+    
+    general_chat = guild.get_channel(GENERAL_CHAT_CHANNEL_ID)
+    if not general_chat:
+        print("❌ General chat channel not found for auto-setting up button")
+        return
+    
+    try:
+        # Check if button message already exists (by looking for a message with our button)
+        button_message_found = False
+        async for message in general_chat.history(limit=50):
+            if message.author == bot.user and message.components:
+                # Check if this message has our button
+                for action_row in message.components:
+                    for component in action_row.children:
+                        if component.custom_id == "request_private_chat":
+                            button_message_found = True
+                            break
+                if button_message_found:
+                    break
+        
+        # If no button message found, create one
+        if not button_message_found:
+            print("📌 Creating private chat request button message in general-chat...")
+            
+            embed = discord.Embed(
+                title="💬 Need to Talk to Us?",
+                description=(
+                    "**Click the button below to start a private conversation!**\n\n"
+                    "## 🔐 **HOW IT WORKS**\n"
+                    "1. Click the **📩 Request Private Chat** button below\n"
+                    "2. A private chat will be created just for you\n"
+                    "3. Only you and our admin can see it\n"
+                    "4. We'll respond to you in that private chat\n\n"
+                    "## ⚠️ **IMPORTANT NOTES**\n"
+                    "• Do not type in this channel\n"
+                    "• Use the button every time you need to talk to us\n"
+                    "• If you already have a private chat, clicking will just show you your existing chat\n"
+                ),
+                color=discord.Color.blue()
+            )
+            
+            view = GeneralChatButtonView()
+            await general_chat.send(embed=embed, view=view)
+            
+            print("✅ Private chat request button message created in general-chat")
+            
+    except Exception as e:
+        print(f"❌ Error auto-setting up general-chat button: {e}")
+        import traceback
+        traceback.print_exc()
+
 # =============================================================================
 # CHANNEL CLEARING FUNCTION
 # =============================================================================
-
 @bot_command.command(name="clear_channel")
 @bot_channel_only()
 async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
@@ -5555,15 +5468,40 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
     
     # Show confirmation
     class ConfirmClearView(discord.ui.View):
-        def __init__(self, channel_id: int):
+        """Confirmation view for channel clearing."""
+        
+        def __init__(self, channel_id: int, user_id: int):
             super().__init__(timeout=60)
             self.channel_id = channel_id
+            self.user_id = user_id
             self.confirmed = False
+            self.timed_out = False
+        
+        async def on_timeout(self):
+            """Handle view timeout."""
+            self.timed_out = True
+            # Disable all buttons on timeout
+            for child in self.children:
+                child.disabled = True
+            
+            # Try to update the message
+            try:
+                # Get the original message from the interaction if available
+                if hasattr(self, 'message') and self.message:
+                    await self.message.edit(content="⏰ **Confirmation timed out.** Please run the command again if you still want to clear the channel.", view=self)
+            except:
+                pass
         
         @discord.ui.button(label="✅ Yes, Clear Everything", style=discord.ButtonStyle.danger)
         async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if interaction.user.id != ADMIN_USER_ID:
-                await interaction.response.send_message("❌ Only admin can confirm this action.", ephemeral=True)
+            """Confirm and execute channel clearing."""
+            # Check if timed out
+            if self.timed_out:
+                await interaction.response.send_message("❌ This confirmation has timed out. Please run the command again.", ephemeral=True)
+                return
+            
+            if interaction.user.id != self.user_id:
+                await interaction.response.send_message("❌ Only the command author can confirm this action.", ephemeral=True)
                 return
             
             self.confirmed = True
@@ -5614,16 +5552,16 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
                         color=discord.Color.green()
                     )
                     
+                    # Delete the original confirmation message
                     try:
-                        # Try to edit the original response
-                        await interaction.edit_original_response(
-                            content="",
-                            embed=completion_embed,
-                            view=None
-                        )
+                        if hasattr(self, 'message') and self.message:
+                            await self.message.delete()
+                            print(f"🗑️ Deleted confirmation message for channel clear")
                     except:
-                        # If can't edit, send new message
-                        await channel.send(embed=completion_embed)
+                        pass
+                    
+                    # Send the completion message
+                    await interaction.followup.send(embed=completion_embed, ephemeral=True)
                     
                     # Log to log channel
                     log_embed = discord.Embed(
@@ -5648,18 +5586,37 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
         
         @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
         async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if interaction.user.id != ADMIN_USER_ID:
-                await interaction.response.send_message("❌ Only admin can cancel this action.", ephemeral=True)
+            """Cancel the clearing operation."""
+            # Check if timed out
+            if self.timed_out:
+                await interaction.response.send_message("❌ This confirmation has timed out. Please run the command again.", ephemeral=True)
+                return
+            
+            if interaction.user.id != self.user_id:
+                await interaction.response.send_message("❌ Only the command author can cancel this action.", ephemeral=True)
                 return
             
             self.confirmed = False
             self.stop()
             
-            await interaction.response.edit_message(
-                content="✅ Clear operation cancelled.",
-                embed=None,
-                view=None
-            )
+            # Delete the confirmation message
+            try:
+                if hasattr(self, 'message') and self.message:
+                    await self.message.delete()
+                    print(f"🗑️ Deleted cancelled confirmation message")
+                    await interaction.response.send_message("✅ Clear operation cancelled.", ephemeral=True)
+                else:
+                    await interaction.response.edit_message(
+                        content="✅ Clear operation cancelled.",
+                        embed=None,
+                        view=None
+                    )
+            except:
+                await interaction.response.edit_message(
+                    content="✅ Clear operation cancelled.",
+                    embed=None,
+                    view=None
+                )
     
     # Show confirmation embed
     embed = discord.Embed(
@@ -5679,8 +5636,9 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
         inline=False
     )
     
-    view = ConfirmClearView(channel.id)
-    await ctx.send(embed=embed, view=view, ephemeral=True)
+    view = ConfirmClearView(channel.id, ctx.author.id)
+    message = await ctx.send(embed=embed, view=view, ephemeral=True)
+    view.message = message  # Store message reference for timeout handling
 
 # =============================================================================
 # UPDATE ON_READY TO AUTO-PIN
@@ -5739,7 +5697,9 @@ async def on_ready():
         await reinitialize_private_chat_views()
         
         # AUTO-PIN BOT COMMAND MESSAGE
-        await auto_pin_bot_command()
+        await auto_setup_command_chat()
+
+        await auto_setup_general_chat_button()
         
         # Verify monitored channels
         print("\n📢 MONITORED CHANNELS (messages will create private chats):")
@@ -5861,171 +5821,6 @@ async def on_ready():
 # =============================================================================
 # ROLE MANAGEMENT COMMANDS
 # =============================================================================
-@bot_command.command(name="assign_master_lee_family")
-@bot_channel_only()
-async def chat_assign_master_lee_family(ctx, member: discord.Member):
-    """Assign Master Lee's Family role and add to JSON."""
-    guild = ctx.guild
-    master_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-    
-    if not master_family_role:
-        await ctx.send("❌ Master Lee's Family role not found!", ephemeral=True)
-        return
-    
-    try:
-        # Assign Discord role
-        await member.add_roles(master_family_role, reason="Master Lee's Family role assigned by admin")
-        
-        # Add to JSON if not exists
-        user_id_str = str(member.id)
-        if user_id_str not in registered_users:
-            registered_users[user_id_str] = {
-                'child_name': member.name,
-                'role': 'Master Lee Family',
-                'role_display': '👑 Master Lee Family',
-                'nickname': member.display_name,
-                'gender': 'master_family',
-                'programs': [],
-                'registered_at': discord.utils.utcnow().isoformat(),
-                'has_active_private_chat': False,
-                'private_chat_channel_id': None,
-                'roles': ["Master Lee's Family"],
-                'master_lee_family': True,
-                'auto_added': True
-            }
-        else:
-            # Update existing entry
-            roles = registered_users[user_id_str].get('roles', [])
-            if "Master Lee's Family" not in roles:
-                roles.append("Master Lee's Family")
-                registered_users[user_id_str]['roles'] = roles
-            registered_users[user_id_str]['master_lee_family'] = True
-        
-        save_registered_users(registered_users)
-        
-        # Simulate "pressed" green check mark
-        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-        if rules_channel:
-            try:
-                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-                # Check if user already has the reaction
-                has_reaction = False
-                for reaction in rules_message.reactions:
-                    if str(reaction.emoji) == '✅':
-                        async for user in reaction.users():
-                            if user.id == member.id:
-                                has_reaction = True
-                                break
-                    if has_reaction:
-                        break
-                
-                if not has_reaction:
-                    await rules_message.add_reaction('✅')
-                    print(f"✅ Added green check mark for {member.name}")
-            except Exception as e:
-                print(f"⚠️ Could not add green check reaction: {e}")
-        
-        # Send confirmation
-        embed = discord.Embed(
-            title="✅ Master Lee's Family Role Assigned",
-            description=f"Successfully assigned **Master Lee's Family** role to {member.mention}\n"
-                      f"✓ Added to JSON registry\n"
-                      f"✓ Granted green check mark\n"
-                      f"✓ Full channel access enabled",
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=embed)
-        
-        print(f"👑 Assigned Master Lee's Family role to {member.name}")
-        
-    except discord.Forbidden:
-        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
-
-@bot_command.command(name="assign_instructor")
-@bot_channel_only()
-async def chat_assign_instructor(ctx, member: discord.Member):
-    """Assign Instructor role and add to JSON."""
-    guild = ctx.guild
-    instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
-    
-    if not instructor_role:
-        await ctx.send("❌ Instructor role not found!", ephemeral=True)
-        return
-    
-    try:
-        # Assign Discord role
-        await member.add_roles(instructor_role, reason="Instructor role assigned by admin")
-        
-        # Add to JSON if not exists
-        user_id_str = str(member.id)
-        if user_id_str not in registered_users:
-            registered_users[user_id_str] = {
-                'child_name': member.name,
-                'role': 'Instructor',
-                'role_display': '👨‍🏫 Instructor',
-                'nickname': member.display_name,
-                'gender': 'instructor',
-                'programs': [],
-                'registered_at': discord.utils.utcnow().isoformat(),
-                'has_active_private_chat': False,
-                'private_chat_channel_id': None,
-                'roles': ["Instructor"],
-                'instructor': True,
-                'auto_added': True
-            }
-        else:
-            # Update existing entry
-            roles = registered_users[user_id_str].get('roles', [])
-            if "Instructor" not in roles:
-                roles.append("Instructor")
-                registered_users[user_id_str]['roles'] = roles
-            registered_users[user_id_str]['instructor'] = True
-        
-        save_registered_users(registered_users)
-        
-        # Simulate "pressed" green check mark
-        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-        if rules_channel:
-            try:
-                rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-                # Check if user already has the reaction
-                has_reaction = False
-                for reaction in rules_message.reactions:
-                    if str(reaction.emoji) == '✅':
-                        async for user in reaction.users():
-                            if user.id == member.id:
-                                has_reaction = True
-                                break
-                    if has_reaction:
-                        break
-                
-                if not has_reaction:
-                    await rules_message.add_reaction('✅')
-                    print(f"✅ Added green check mark for {member.name}")
-            except Exception as e:
-                print(f"⚠️ Could not add green check reaction: {e}")
-        
-        # Send confirmation
-        embed = discord.Embed(
-            title="✅ Instructor Role Assigned",
-            description=f"Successfully assigned **Instructor** role to {member.mention}\n"
-                      f"✓ Added to JSON registry\n"
-                      f"✓ Granted green check mark\n"
-                      f"✓ Teaching permissions enabled",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-        
-        print(f"👨‍🏫 Assigned Instructor role to {member.name}")
-        
-    except discord.Forbidden:
-        await ctx.send("❌ I don't have permission to assign roles!", ephemeral=True)
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
-
-
 @bot_command.command(name="remove_role")
 @bot_channel_only()
 async def remove_role(ctx, member: discord.Member, role_type: str):
@@ -6504,9 +6299,9 @@ async def before_update_json_task():
 # MANUAL UPDATE COMMAND
 # =============================================================================
 
-@bot_command.command(name="update_json_now")
+@bot_command.command(name="update_json_roles")
 @bot_channel_only()
-async def chat_update_json_now(ctx):
+async def chat_update_json_roles(ctx):
     """
     Manually trigger JSON role update immediately.
     
@@ -7246,7 +7041,7 @@ async def chat_verify_json_roles(ctx, member: discord.Member = None):
     if out_of_sync_count > 0:
         embed.add_field(
             name="🔧 Action Required",
-            value=f"Run `!bot_command update_json_now` to sync all users\n"
+            value=f"Run `!bot_command update_json_roles` to sync all users\n"
                    f"Or `!bot_command force_json_sync @user` for specific users",
             inline=False
         )
@@ -7254,48 +7049,8 @@ async def chat_verify_json_roles(ctx, member: discord.Member = None):
     await ctx.send(embed=embed)
 
 # =============================================================================
-# PRIVATE CHAT COMMANDS (NOT RESTRICTED TO BOT CHANNEL)
-# =============================================================================
-
-@bot.command(name="close_chat")
-async def close_chat(ctx, channel: discord.TextChannel = None):
-    """
-    Close a private chat channel.
-    
-    Works in private chats and requires admin authorization.
-    """
-    if ctx.author.id != ADMIN_USER_ID:
-        await ctx.send("❌ This command is only for the admin.", ephemeral=True)
-        return
-    
-    if not channel:
-        channel = ctx.channel
-    
-    if channel.id not in private_channels:
-        await ctx.send("❌ This is not a private chat.", ephemeral=True)
-        return
-    
-    # Get channel data
-    data = private_channels[channel.id]
-    user = ctx.guild.get_member(data['user_id'])
-    
-    # Show confirmation
-    embed = discord.Embed(
-        title="🗑️ Delete Private Chat",
-        description=f"Are you sure you want to delete **{channel.name}**?\n\n"
-                   f"**User:** {user.mention if user else 'Unknown'}\n"
-                   f"**Created:** <t:{int(data['created_at'])}:R>\n"
-                   f"**This action cannot be undone!** All messages will be permanently deleted.",
-        color=discord.Color.red()
-    )
-    
-    view = ConfirmDeleteView(channel.id, data['user_id'])
-    await ctx.send(embed=embed, view=view)
-
-# =============================================================================
 # PUBLIC COMMANDS
 # =============================================================================
-
 @bot.command(name="force_register")
 async def force_register(ctx):
     """Force start registration process for the command user."""
@@ -7309,7 +7064,6 @@ async def force_register(ctx):
 # =============================================================================
 # ERROR HANDLING
 # =============================================================================
-
 @bot.event
 async def on_command_error(ctx, error):
     """

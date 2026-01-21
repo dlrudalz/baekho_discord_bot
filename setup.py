@@ -352,73 +352,72 @@ async def on_command_error(ctx, error):
     else:
         print(f"Error: {error}")
 
-async def setup_general_chat_button_message(guild: discord.Guild, general_chat: discord.TextChannel):
-    """
-    Set up the button message for private chat requests in general-chat.
+# async def setup_general_chat_button_message(guild: discord.Guild, general_chat: discord.TextChannel):
+#     """
+#     Set up the button message for private chat requests in general-chat.
     
-    This replaces the old mute reaction system with a button system.
-    """
-    if not general_chat:
-        print("❌ General chat channel not found")
-        return
+#     This replaces the old mute reaction system with a button system.
+#     """
+#     if not general_chat:
+#         print("❌ General chat channel not found")
+#         return
     
-    try:
-        # Check existing messages for our button message
-        button_message_found = False
-        async for message in general_chat.history(limit=50):
-            if message.author == bot.user and message.components:
-                # Check if this message has our button
-                for action_row in message.components:
-                    for component in action_row.children:
-                        if component.custom_id == "request_private_chat":
-                            button_message_found = True
-                            break
-                if button_message_found:
-                    break
+#     try:
+#         # Check existing messages for our button message
+#         button_message_found = False
+#         async for message in general_chat.history(limit=50):
+#             if message.author == bot.user and message.components:
+#                 # Check if this message has our button
+#                 for action_row in message.components:
+#                     for component in action_row.children:
+#                         if component.custom_id == "request_private_chat":
+#                             button_message_found = True
+#                             break
+#                 if button_message_found:
+#                     break
         
-        # Create if not found
-        if not button_message_found:
-            # Send temporary message while setting up
-            temp_msg = await general_chat.send("🔄 Setting up chat system...")
+#         # Create if not found
+#         if not button_message_found:
+#             # Send temporary message while setting up
+#             temp_msg = await general_chat.send("🔄 Setting up chat system...")
             
-            # Create the button message
-            embed = discord.Embed(
-                title="💬 Need to Talk to Us?",
-                description=(
-                    "**Click the button below to start a private conversation!**\n\n"
-                    "## 🔐 **HOW IT WORKS**\n"
-                    "1. Click the **📩 Request Private Chat** button below\n"
-                    "2. A private chat will be created just for you\n"
-                    "3. Only you and our admin can see it\n"
-                    "4. We'll respond to you in that private chat\n\n"
-                    "## ⚠️ **IMPORTANT NOTES**\n"
-                    "• Do not type in this channel\n"
-                    "• Use the button every time you need to talk to us\n"
-                    "• If you already have a private chat, clicking will just show you your existing chat\n"
-                    "• You can have multiple private chats for different topics\n"
-                ),
-                color=discord.Color.blue()
-            )
+#             # Create the button message
+#             embed = discord.Embed(
+#                 title="💬 Need to Talk to Us?",
+#                 description=(
+#                     "**Click the button below to start a private conversation!**\n\n"
+#                     "## 🔐 **HOW IT WORKS**\n"
+#                     "1. Click the **📩 Request Private Chat** button below\n"
+#                     "2. A private chat will be created just for you\n"
+#                     "3. Only you and our admin can see it\n"
+#                     "4. We'll respond to you in that private chat\n\n"
+#                     "## ⚠️ **IMPORTANT NOTES**\n"
+#                     "• Do not type in this channel\n"
+#                     "• Use the button every time you need to talk to us\n"
+#                     "• If you already have a private chat, clicking will just show you your existing chat\n"
+#                 ),
+#                 color=discord.Color.blue()
+#             )
             
-            # Create the button view
-            view = discord.ui.View(timeout=None)  # Permanent view
-            view.add_item(discord.ui.Button(
-                label="📩 Request Private Chat",
-                style=discord.ButtonStyle.primary,
-                custom_id="request_private_chat",
-                emoji="📩"
-            ))
+#             # Create the button view
+#             view = discord.ui.View(timeout=None)  # Permanent view
+#             view.add_item(discord.ui.Button(
+#                 label="📩 Request Private Chat",
+#                 style=discord.ButtonStyle.primary,
+#                 custom_id="request_private_chat",
+#                 emoji="📩"
+#             ))
             
-            # Send the button message WITHOUT PINNING
-            button_message = await general_chat.send(embed=embed, view=view)
+#             # Send the button message WITHOUT PINNING
+#             button_message = await general_chat.send(embed=embed, view=view)
             
-            # Delete temporary message
-            await temp_msg.delete()
+#             # Delete temporary message
+#             await temp_msg.delete()
             
-            print("✅ Created private chat button message in general-chat (not pinned)")
+#             print("✅ Created private chat button message in general-chat (not pinned)")
             
-    except Exception as e:
-        print(f"❌ Error setting up general-chat button message: {e}")
+#     except Exception as e:
+#         print(f"❌ Error setting up general-chat button message: {e}")
 
 # ============================================================================
 # ADMIN COMMANDS
@@ -1162,7 +1161,7 @@ async def setup_server(ctx):
                 reason="General chat channel - Hidden until registration"
             )
             created_ids['GENERAL_CHAT_CHANNEL_ID'] = str(general_chat.id)
-
+            
             # Set permissions for general-chat (HIDDEN by default, only visible after getting Family Member role)
             await general_chat.set_permissions(guild.default_role,
                 read_messages=False,      # Hidden from @everyone
@@ -1222,7 +1221,7 @@ async def setup_server(ctx):
             )
 
             # Set up the button message for private chat requests
-            await setup_general_chat_button_message(guild, general_chat)
+            # await setup_general_chat_button_message(guild, general_chat)
             
             # 6. 🤖 BOT Category - All channels visible only to admin user
             # a) command (Admin only)
