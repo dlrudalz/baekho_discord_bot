@@ -2343,12 +2343,6 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
             # User has green check but not in JSON
             users_green_check_not_in_json.append(member)
         
-        # Print results - NO TRUNCATION FOR UNREGISTERED USERS
-        print("\n📊 COMPREHENSIVE REGISTRATION CHECK:")
-        print(f"   Total in server: {len(all_members)}")
-        print(f"   Total in JSON: {len(registered_users)}")
-        print(f"   Total with green check: {len(green_check_users)}")
-        
         # PRINT ALL UNREGISTERED USERS WITHOUT TRUNCATION
         print(f"\n🔴 UNREGISTERED USERS (in server but NOT in JSON): {len(users_not_in_json)}")
         if users_not_in_json:
@@ -3727,12 +3721,13 @@ async def log_successful_registration(
 # COMMAND DEFINITIONS
 # =============================================================================
 # Bot command group for administrative functions
-@bot.group(name="bot_command", invoke_without_command=False)
+@bot.group(name="bot_command", invoke_without_command=True)
 async def bot_command(ctx):
     """Main bot command category for administrative functions."""
-    # Don't send any message when invoked without subcommand
-    # Let Discord.py handle the "command not found" naturally
-    pass
+    if ctx.invoked_subcommand is None:
+        # If no subcommand was invoked, show help
+        embed = create_bot_commands_embed()
+        await ctx.send(embed=embed)
 
 @bot_command.command(name="chat")
 @bot_channel_only()
@@ -3805,7 +3800,6 @@ async def chat_command(ctx):
             "`assign_both_roles @user` - Assign both special roles\n"
             "`remove_role @user role_type` - Remove specific role\n"
             "`list_special_roles` - List all special role members\n"
-            "`check_role_consistency` - Verify role assignments\n"
             "`role_audit @user` - Full role audit for user\n"
         ),
         inline=False
@@ -5424,7 +5418,6 @@ def create_bot_commands_embed():
             "`assign_both_roles @user` - Assign both special roles\n"
             "`remove_role @user role_type` - Remove specific role\n"
             "`list_special_roles` - List all special role members\n"
-            "`check_role_consistency` - Verify role assignments\n"
             "`role_audit @user` - Full role audit for user\n"
         ),
         inline=False

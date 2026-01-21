@@ -90,8 +90,8 @@
     "nickname": "Rebel Redmon's Father",
     "gender": "father",
     "registered_at": "2026-01-15T00:23:44.664494+00:00",
-    "has_active_private_chat": true,
-    "private_chat_channel_id": 1462943340604686580,
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
     "roles": [
       "Family Member"
     ],
@@ -814,5 +814,151 @@
     "programs": [],
     "auto_added": true,
     "master_lee_family": true
+  },
+  "815742806526132264": {
+    "child_name": "Agastya Peddolla",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Agastya Peddolla's Father",
+    "gender": "father",
+    "registered_at": "2026-01-20T22:57:31.793207+00:00",
+    "programs": [
+      "national"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team"
+    ]
+  },
+  "880607706237501471": {
+    "child_name": "Lennox Tran",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Lennox Tran's Father",
+    "gender": "father",
+    "registered_at": "2026-01-20T23:37:28.253256+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463321256437743627": {
+    "child_name": "Thiago Pinilla",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Thiago Pinilla's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-20T23:59:18.023674+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1461511069666119720": {
+    "child_name": "John Kramarz",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "John Kramarz's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T00:04:28.436959+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "1463322699144233135": {
+    "child_name": "Trigg Sorrells",
+    "role": "Grandfather",
+    "role_display": "\ud83d\udc74 Grandfather",
+    "nickname": "Trigg Sorrells's Grandfather",
+    "gender": "grandfather",
+    "registered_at": "2026-01-21T00:06:27.129202+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463323292680192203": {
+    "child_name": "Calla Carson",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Calla Carson's Father",
+    "gender": "father",
+    "registered_at": "2026-01-21T00:08:07.841234+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463324660702908510": {
+    "child_name": "Ablakat Bekele",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Ablakat Bekele's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T00:13:17.264600+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "847845650497404928": {
+    "child_name": "Khang Nguyen",
+    "role": "Student",
+    "role_display": "\ud83c\udf93 Student",
+    "nickname": "Khang Nguyen",
+    "gender": "student",
+    "registered_at": "2026-01-21T00:21:42.515044+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student"
+    ]
+  },
+  "1041531368024309760": {
+    "child_name": "Levi Reyes",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Levi Reyes's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T00:33:33.351670+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1444057993611186196": {
+    "child_name": "Barrett Yee",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Barrett Yee's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T01:01:25.395908+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
   }
 }
