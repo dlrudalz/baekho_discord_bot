@@ -352,73 +352,6 @@ async def on_command_error(ctx, error):
     else:
         print(f"Error: {error}")
 
-# async def setup_general_chat_button_message(guild: discord.Guild, general_chat: discord.TextChannel):
-#     """
-#     Set up the button message for private chat requests in general-chat.
-    
-#     This replaces the old mute reaction system with a button system.
-#     """
-#     if not general_chat:
-#         print("❌ General chat channel not found")
-#         return
-    
-#     try:
-#         # Check existing messages for our button message
-#         button_message_found = False
-#         async for message in general_chat.history(limit=50):
-#             if message.author == bot.user and message.components:
-#                 # Check if this message has our button
-#                 for action_row in message.components:
-#                     for component in action_row.children:
-#                         if component.custom_id == "request_private_chat":
-#                             button_message_found = True
-#                             break
-#                 if button_message_found:
-#                     break
-        
-#         # Create if not found
-#         if not button_message_found:
-#             # Send temporary message while setting up
-#             temp_msg = await general_chat.send("🔄 Setting up chat system...")
-            
-#             # Create the button message
-#             embed = discord.Embed(
-#                 title="💬 Need to Talk to Us?",
-#                 description=(
-#                     "**Click the button below to start a private conversation!**\n\n"
-#                     "## 🔐 **HOW IT WORKS**\n"
-#                     "1. Click the **📩 Request Private Chat** button below\n"
-#                     "2. A private chat will be created just for you\n"
-#                     "3. Only you and our admin can see it\n"
-#                     "4. We'll respond to you in that private chat\n\n"
-#                     "## ⚠️ **IMPORTANT NOTES**\n"
-#                     "• Do not type in this channel\n"
-#                     "• Use the button every time you need to talk to us\n"
-#                     "• If you already have a private chat, clicking will just show you your existing chat\n"
-#                 ),
-#                 color=discord.Color.blue()
-#             )
-            
-#             # Create the button view
-#             view = discord.ui.View(timeout=None)  # Permanent view
-#             view.add_item(discord.ui.Button(
-#                 label="📩 Request Private Chat",
-#                 style=discord.ButtonStyle.primary,
-#                 custom_id="request_private_chat",
-#                 emoji="📩"
-#             ))
-            
-#             # Send the button message WITHOUT PINNING
-#             button_message = await general_chat.send(embed=embed, view=view)
-            
-#             # Delete temporary message
-#             await temp_msg.delete()
-            
-#             print("✅ Created private chat button message in general-chat (not pinned)")
-            
-#     except Exception as e:
-#         print(f"❌ Error setting up general-chat button message: {e}")
-
 # ============================================================================
 # ADMIN COMMANDS
 # ============================================================================
@@ -1292,37 +1225,8 @@ async def setup_server(ctx):
             await ctx.send(f"❌ Error creating channels: {e}\n\nPlease make sure the bot has 'Manage Channels' permission.")
             return
         
-        # ========== CREATE RULES MESSAGE ==========
-        await ctx.send("🔄 **Step 4/6: Creating rules message...**")
-        
-        try:
-            rules_embed = discord.Embed(
-                title="📜 Server Rules & Registration",
-                description="**Welcome to our Tae Kwon Do Server!** 👨‍👩‍👧‍👦\n\n"
-                           "**Rules:**\n"
-                           "1. Be respectful to all family members\n"
-                           "2. No bullying or harassment\n"
-                           "3. Keep conversations family-friendly\n"
-                           "4. Respect everyone's privacy\n"
-                           "5. Have fun and build our community!\n\n"
-                           "**After reading the rules, react with ✅ below to begin registration.**\n"
-                           "You will receive a DM from 백호 (baekho) to complete the process.\n\n"
-                           "**Note:** You will receive the access to the server after completing registration.",
-                color=discord.Color.purple()
-            )
-            
-            rules_message = await welcome_channel.send(embed=rules_embed)
-            await rules_message.add_reaction('✅')
-            created_ids['RULES_MESSAGE_ID'] = str(rules_message.id)
-            
-            await ctx.send("✅ **Rules message created and pinned with ✅ reaction**")
-            
-        except discord.Forbidden as e:
-            await ctx.send(f"❌ Error creating rules message: {e}\n\nPlease make sure the bot has 'Send Messages' and 'Add Reactions' permissions.")
-            return
-        
         # ========== CREATE PRIVATE CHATS CATEGORY ==========
-        await ctx.send("🔄 **Step 5/6: Setting up private chats category...**")
+        await ctx.send("🔄 **Step 4/5: Setting up private chats category...**")
 
         try:
             private_chats_category = await guild.create_category(
@@ -1337,13 +1241,13 @@ async def setup_server(ctx):
                 read_messages=False,
                 send_messages=False,
                 view_channel=False
-            )
+            )   
             
             if admin_user:
                 await private_chats_category.set_permissions(admin_user,
                     read_messages=True,
                     send_messages=True,
-                    manage_channels=True,
+                    manage_channels=True,           
                     view_channel=True
                 )
             
@@ -1362,7 +1266,7 @@ async def setup_server(ctx):
             return
         
         # ========== UPDATE CONFIG FILE ==========
-        await ctx.send("🔄 **Step 6/6: Updating configuration...**")
+        await ctx.send("🔄 **Step 5/5: Updating configuration...**")
         
         # Also store the guild ID if not already in config
         if 'GUILD_ID' not in config or config['GUILD_ID'] == '0':

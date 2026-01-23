@@ -1509,6 +1509,88 @@ class GeneralChatButtonView(discord.ui.View):
         
         # Return without sending the instructions message
         return
+    
+# =============================================================================
+# RULES CHANNEL REGISTRATION BUTTON
+# =============================================================================
+class RulesRegistrationView(discord.ui.View):
+    """
+    Permanent view for the rules channel with a registration button.
+    Replaces the old green check reaction system.
+    """
+    
+    def __init__(self):
+        super().__init__(timeout=None)  # Permanent view
+    
+    @discord.ui.button(label="✅ Register Now", style=discord.ButtonStyle.green, custom_id="rules_register_button", emoji="✅", row=0)
+    async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle registration button press in rules channel."""
+        # Defer the response since we need time to process
+        await interaction.response.defer(ephemeral=True)
+        
+        guild = interaction.guild
+        user = interaction.user
+        
+        print(f"📝 {user.name} clicked registration button in rules channel")
+        
+        # Check if user is already registered
+        user_id_str = str(user.id)
+        if user_id_str in registered_users:
+            await interaction.followup.send(
+                "✅ You are already registered! No need to register again.",
+                ephemeral=True
+            )
+            return
+        
+        # Check if user has Master Lee's Family role (exempt from registration)
+        master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        if master_lee_family_role and master_lee_family_role in user.roles:
+            await interaction.followup.send(
+                "👑 As a Master Lee's Family member, you don't need to complete registration!",
+                ephemeral=True
+            )
+            return
+        
+        # Check if user is instructor (exempt from registration)
+        instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+        if instructor_role and instructor_role in user.roles:
+            await interaction.followup.send(
+                "👨‍🏫 As an instructor, you don't need to complete registration!",
+                ephemeral=True
+            )
+            return
+        
+        # Start registration process
+        await log_registration_start(guild, user)
+        await start_dm_process(user)
+        
+        await interaction.followup.send(
+            "📨 **Registration started!** Check your DMs to complete the process.",
+            ephemeral=True
+        )
+    
+    @discord.ui.button(label="📋 Registration Guide", style=discord.ButtonStyle.secondary, custom_id="registration_guide_button", emoji="📋", row=1)
+    async def guide_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show registration guide and instructions."""
+        embed = discord.Embed(
+            title="📋 Registration Guide",
+            description="**Step-by-step registration process:**\n\n"
+                      "1. **Click '✅ Register Now' button above**\n"
+                      "2. **Check your DMs** - 백호 (baekho) will message you\n"
+                      "3. **Follow the DM prompts** to enter:\n"
+                      "   • Your child's name\n"
+                      "   • Your role (mother/father/grandparent)\n"
+                      "   • Programs your child is in\n"
+                      "4. **Review and confirm** your information\n\n"
+                      "**After registration:**\n"
+                      "• You'll get access to the server\n"
+                      "• Use the 📩 button in general-chat to talk to us\n"
+                      "• Your nickname will be updated automatically",
+            color=discord.Color.blue()
+        )
+        
+        embed.set_footer(text="Need help? Contact an admin.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # =============================================================================
 # PRIVATE CHANNEL FUNCTIONS
@@ -1733,19 +1815,12 @@ async def create_private_channel(guild: discord.Guild, user: discord.Member, ori
         welcome_embed = discord.Embed(
             title="🔒 Private Conversation",
             description=f"Welcome to your private conversation channel, {user.mention}!\n\n"
-                      f"**How to use this channel:**\n"
-                      f"1. Use this channel for all communication\n"
-                      f"2. Do NOT create new private chats\n"
-                      f"3. Use this same channel every time\n"
-                      f"4. Only admins can delete this channel\n\n"
-                      f"**Information:**\n"
                       f"• Created from: #{original_channel_name}\n"
                       f"• Created at: <t:{int(current_time)}:F>\n"
-                      f"• Delete button: Pinned above\n\n"
-                      f"Please send your message here!",
+                      f"**Please send your message here!**",
             color=discord.Color.blue()
         )
-        
+                    
         await channel.send(embed=welcome_embed)
         
         # Log channel creation
@@ -2260,10 +2335,10 @@ async def on_ready():
 
 async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Optional[discord.TextChannel]) -> None:
     """
-    Verify consistency between registry and green check marks.
+    Verify consistency between registry and server members.
     
-    NEW LOGIC: Compares users in Discord with JSON file.
-    If user is not in JSON, they are not registered.
+    NEW LOGIC: Compares users in Discord with JSON file only.
+    Green check reactions are no longer used.
     """
     if not rules_channel:
         return
@@ -2275,19 +2350,6 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
         # Get all server members (excluding bots)
         all_members = [member for member in guild.members if not member.bot]
         print(f"   Found {len(all_members)} non-bot members in server")
-        
-        # Get green check reactions
-        green_check_users = set()
-        try:
-            rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-            for reaction in rules_message.reactions:
-                if str(reaction.emoji) == '✅':
-                    async for user in reaction.users():
-                        if not user.bot:
-                            green_check_users.add(user.id)
-            print(f"   Found {len(green_check_users)} users with green check reaction")
-        except Exception as e:
-            print(f"⚠️ Could not fetch green check reactions: {e}")
         
         # Check 1: Users in server but NOT in JSON (unregistered)
         users_not_in_json = []
@@ -2309,6 +2371,11 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
             if is_master_lee_family or is_admin:
                 continue
             
+            # Skip instructors
+            instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+            if instructor_role and instructor_role in member.roles:
+                continue
+            
             # User is in server but not in JSON (and not exempt)
             users_not_in_json.append(member)
         
@@ -2320,58 +2387,18 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
             if not member:
                 users_not_in_server.append(user_id_str)
         
-        # Check 3: Users with green check but NOT in JSON (unregistered with green check)
-        users_green_check_not_in_json = []
-        for user_id in green_check_users:
-            user_id_str = str(user_id)
-            member = guild.get_member(user_id)
-            
-            if not member:
-                continue  # User not in server
-            
-            # Skip if already in JSON
-            if user_id_str in registered_users:
-                continue
-            
-            # Skip Master Lee's Family
-            master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-            is_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
-            
-            if is_master_lee_family:
-                continue
-            
-            # User has green check but not in JSON
-            users_green_check_not_in_json.append(member)
-        
         # PRINT ALL UNREGISTERED USERS WITHOUT TRUNCATION
         print(f"\n🔴 UNREGISTERED USERS (in server but NOT in JSON): {len(users_not_in_json)}")
         if users_not_in_json:
             print("   List of all unregistered users:")
             for i, member in enumerate(sorted(users_not_in_json, key=lambda x: x.name.lower()), 1):
-                # Check if they have green check
-                has_green_check = member.id in green_check_users
-                green_check_status = "✓" if has_green_check else "✗"
-                
                 # Get their roles (excluding @everyone)
-                member_roles = [role.name for role in member.roles if role.name != "@everyone"]
-                roles_text = f", Roles: {', '.join(member_roles)}" if member_roles else ""
-                
-                print(f"   {i:3d}. {green_check_status} {member.name} (ID: {member.id}){roles_text}")
-        else:
-            print("   ✅ All users in server are registered!")
-        
-        # PRINT ALL USERS WITH GREEN CHECK BUT NOT REGISTERED
-        print(f"\n🟡 USERS WITH GREEN CHECK BUT NOT REGISTERED: {len(users_green_check_not_in_json)}")
-        if users_green_check_not_in_json:
-            print("   List of all users with green check but not registered:")
-            for i, member in enumerate(sorted(users_green_check_not_in_json, key=lambda x: x.name.lower()), 1):
-                # Get their roles
                 member_roles = [role.name for role in member.roles if role.name != "@everyone"]
                 roles_text = f", Roles: {', '.join(member_roles)}" if member_roles else ""
                 
                 print(f"   {i:3d}. {member.name} (ID: {member.id}){roles_text}")
         else:
-            print("   ✅ All users with green check are registered!")
+            print("   ✅ All users in server are registered!")
         
         # PRINT ALL USERS IN JSON BUT NOT IN SERVER
         print(f"\n🔵 USERS IN JSON BUT NOT IN SERVER: {len(users_not_in_server)}")
@@ -2412,21 +2439,18 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
             inline=False
         )
         
-        # For log channel, we'll list all unregistered users (but Discord has limits, so we might need to truncate)
+        # For log channel, we'll list all unregistered users
         if users_not_in_json:
             # Create a string with all unregistered users
             unregistered_list = ""
             for i, member in enumerate(sorted(users_not_in_json, key=lambda x: x.name.lower()), 1):
-                has_green_check = member.id in green_check_users
-                green_check_status = "✓" if has_green_check else "✗"
-                
                 # Get member roles
                 member_roles = [role.name for role in member.roles if role.name != "@everyone"]
                 roles_text = f" [{', '.join(member_roles[:2])}]" if member_roles else ""
                 if len(member_roles) > 2:
                     roles_text = f" [{', '.join(member_roles[:2])} +{len(member_roles)-2} more]"
                 
-                entry = f"{i}. {green_check_status} **{member.name}**{roles_text}\n"
+                entry = f"{i}. **{member.name}**{roles_text}\n"
                 
                 # Discord field value limit is 1024 characters
                 if len(unregistered_list) + len(entry) <= 1000:
@@ -2440,25 +2464,6 @@ async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Op
             embed.add_field(
                 name=f"🔴 Unregistered Users ({len(users_not_in_json)} total)",
                 value=unregistered_list or "None",
-                inline=False
-            )
-        
-        # For users with green check but not registered
-        if users_green_check_not_in_json:
-            green_check_list = ""
-            for i, member in enumerate(sorted(users_green_check_not_in_json, key=lambda x: x.name.lower()), 1):
-                entry = f"{i}. **{member.name}**\n"
-                
-                if len(green_check_list) + len(entry) <= 1000:
-                    green_check_list += entry
-                else:
-                    remaining = len(users_green_check_not_in_json) - i + 1
-                    green_check_list += f"... and {remaining} more"
-                    break
-            
-            embed.add_field(
-                name=f"🟡 Green Check But Not Registered ({len(users_green_check_not_in_json)} total)",
-                value=green_check_list or "None",
                 inline=False
             )
         
@@ -2546,114 +2551,9 @@ async def on_member_remove(member: discord.Member):
     print(f"✅ Cleanup complete for {member.name}")
     
 async def remove_green_check_reaction(member: discord.Member) -> None:
-    """No longer removing green check mark reactions - they're just visual."""
-    print(f"⚠️ Note: Green check marks are now visual only. No action taken for {member.name}")
-    return  # Do nothing - green checks are visual only
-
-@bot.event
-async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    """
-    Prevent unauthorized removal of green check marks.
-    
-    Business rules:
-    - Registered users cannot remove their green check
-    - Master Lee's Family members can remove theirs
-    - Non-registered users can remove theirs
-    """
-    # Ignore bot reactions
-    if payload.user_id == bot.user.id:
-        return
-    
-    # Check if this is the rules channel green check removal
-    if (payload.channel_id == RULES_CHANNEL_ID and 
-        payload.message_id == RULES_MESSAGE_ID and 
-        str(payload.emoji) == '✅'):
-        
-        guild = bot.get_guild(payload.guild_id)
-        if guild:
-            member = guild.get_member(payload.user_id)
-            if member and not member.bot:
-                # Check for Master Lee's Family role exemption
-                master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-                has_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
-                
-                if has_master_lee_family:
-                    print(f"✅ User {member.name} has Master Lee's Family role, allowing reaction removal")
-                    return
-                
-                # Check registration status
-                is_registered = str(member.id) in registered_users
-                has_family_role = False
-                family_role = guild.get_role(FAMILY_ROLE_ID)
-                if family_role:
-                    has_family_role = family_role in member.roles
-                
-                # Re-add reaction for registered users
-                if is_registered or has_family_role:
-                    await re_add_green_check_reaction(guild, member)
-                else:
-                    print(f"ℹ️ User {member.name} is not registered, allowing reaction removal")
-    
-async def re_add_green_check_reaction(guild: discord.Guild, member: discord.Member) -> None:
-    """Re-add green check reaction for registered users who removed it."""
-    print(f"🔄 User {member.name} is registered/received family role, re-adding reaction...")
-    
-    try:
-        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-        if rules_channel:
-            rules_message = await rules_channel.fetch_message(RULES_MESSAGE_ID)
-            await rules_message.add_reaction('✅')
-            print(f"✅ Re-added green check mark for {member.name}")
-            
-            # Notify user about registration lock
-            try:
-                dm_channel = await member.create_dm()
-                warning_embed = discord.Embed(
-                    title="⚠️ Registration Locked",
-                    description="Your green check mark reaction cannot be removed!\n\n"
-                              "Once you've accepted the rules and begun registration, "
-                              "your agreement is recorded. If you leave the server, "
-                              "your data will be automatically deleted.",
-                    color=discord.Color.orange()
-                )
-                await dm_channel.send(embed=warning_embed)
-            except discord.Forbidden:
-                print(f"⚠️ Cannot send DM warning to {member.name}")
-    except Exception as e:
-        print(f"❌ Error re-adding reaction: {e}")
-
-@bot.event 
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """
-    Handle green check mark reactions to start registration.
-    
-    NEW LOGIC: Only check JSON file. If user is in JSON, do nothing.
-    Only start DM process for users NOT in JSON.
-    """
-    # Ignore bot reactions
-    if payload.user_id == bot.user.id:
-        return
-    
-    # Check for rules channel green check reaction
-    if (payload.channel_id == RULES_CHANNEL_ID and
-        payload.message_id == RULES_MESSAGE_ID and
-        str(payload.emoji) == '✅'):
-        
-        guild = bot.get_guild(payload.guild_id)
-        if guild:
-            member = guild.get_member(payload.user_id)
-            if member and not member.bot:
-                # ONLY check: Is user in JSON?
-                user_id_str = str(member.id)
-                if user_id_str in registered_users:
-                    # User is already registered in JSON - do nothing
-                    print(f"✅ {member.name} already in JSON, ignoring reaction")
-                    return
-                
-                # User is NOT in JSON - start registration process
-                print(f"📝 {member.name} clicked green check, starting registration")
-                await log_registration_start(guild, member)
-                await start_dm_process(member)
+    """No longer removing green check mark reactions - we're using buttons now."""
+    print(f"⚠️ Note: Registration now uses buttons. No green check reactions to remove for {member.name}")
+    return  # Do nothing - we're using buttons now
 
 async def handle_master_lee_family_member(member: discord.Member) -> None:
     """Handle Master Lee's Family members (exempt from registration)."""
@@ -5444,6 +5344,175 @@ async def auto_setup_general_chat_button():
         traceback.print_exc()
 
 # =============================================================================
+# AUTO-SETUP FUNCTIONS FOR WELCOME CHANNEL
+# =============================================================================
+async def auto_setup_welcome_channel():
+    """
+    Automatically set up the welcome channel (rules message) with registration button on bot startup.
+    Only creates if not already exists.
+    """
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print("❌ Guild not found for auto-setting up welcome channel")
+        return
+    
+    welcome_channel = guild.get_channel(RULES_CHANNEL_ID)
+    if not welcome_channel:
+        print("❌ Welcome channel (rules channel) not found")
+        return
+    
+    try:
+        # Check if rules message already exists and is pinned
+        pinned_messages = await welcome_channel.pins()
+        rules_message_exists = False
+        rules_message_id = None
+        
+        for pinned_msg in pinned_messages:
+            if pinned_msg.author == bot.user and pinned_msg.embeds:
+                for embed in pinned_msg.embeds:
+                    if embed.title and "Server Rules & Registration" in embed.title:
+                        rules_message_exists = True
+                        rules_message_id = pinned_msg.id
+                        print(f"✅ Rules message already pinned: {pinned_msg.id}")
+                        
+                        # Check if it has our button view
+                        has_button = False
+                        if pinned_msg.components:
+                            for component in pinned_msg.components:
+                                if component.children and component.children[0].custom_id == "rules_register_button":
+                                    has_button = True
+                                    break
+                        
+                        if not has_button:
+                            # Update existing message with button
+                            print(f"🔄 Updating existing rules message with button view...")
+                            view = RulesRegistrationView()
+                            await pinned_msg.edit(view=view)
+                            print(f"✅ Added registration button to existing rules message")
+                        
+                        break
+                if rules_message_exists:
+                    break
+        
+        # If no existing rules message, check all messages in the channel (not just pinned)
+        if not rules_message_exists:
+            async for message in welcome_channel.history(limit=100):
+                if message.author == bot.user and message.embeds:
+                    for embed in message.embeds:
+                        if embed.title and "Server Rules & Registration" in embed.title:
+                            rules_message_exists = True
+                            rules_message_id = message.id
+                            print(f"✅ Found existing rules message: {message.id}")
+                            
+                            # Check if it has our button view
+                            has_button = False
+                            if message.components:
+                                for component in message.components:
+                                    if component.children and component.children[0].custom_id == "rules_register_button":
+                                        has_button = True
+                                        break
+                            
+                            if not has_button:
+                                # Update existing message with button
+                                print(f"🔄 Updating existing rules message with button view...")
+                                view = RulesRegistrationView()
+                                await message.edit(view=view)
+                                print(f"✅ Added registration button to existing rules message")
+                            
+                            # Pin it if not already pinned
+                            if not message.pinned:
+                                await message.pin(reason="Rules message with registration button")
+                                print(f"📌 Pinned existing rules message")
+                            
+                            break
+                if rules_message_exists:
+                    break
+        
+        # If no rules message found, create one
+        if not rules_message_exists:
+            print("📌 Creating and pinning rules message with registration button...")
+            
+            # Create the rules embed
+            rules_embed = discord.Embed(
+                title="📜 Server Rules & Registration",
+                description="**Welcome to our Tae Kwon Do Server!** 👨‍👩‍👧‍👦\n\n"
+                          "**Rules:**\n"
+                          "1. Be respectful to all family members\n"
+                          "2. No bullying or harassment\n"
+                          "3. Keep conversations family-friendly\n"
+                          "4. Respect everyone's privacy\n"
+                          "5. Have fun and build our community!\n\n"
+                          "**To register, click the '✅ Register Now' button below.**\n"
+                          "You will receive a DM from 백호 (baekho) to complete the process.\n\n"
+                          "**After registration:**\n"
+                          "• You'll get access to the server\n"
+                          "• Use the 📩 button in general-chat to talk to us\n"
+                          "• Your nickname will be updated automatically",
+                color=discord.Color.purple()
+            )
+            
+            # Send and pin the rules message with button
+            view = RulesRegistrationView()
+            rules_message = await welcome_channel.send(embed=rules_embed, view=view)
+            await rules_message.pin(reason="Auto-pinned rules message with registration button on startup")
+            
+            # Update config with new message ID
+            await update_welcome_message_id(rules_message.id)
+            
+            print(f"✅ Rules message with button created and pinned: {rules_message.id}")
+            
+            # Log to log channel
+            log_embed = discord.Embed(
+                title="📌 Rules Message Auto-Pinned",
+                description=f"Rules message with registration button has been auto-pinned in {welcome_channel.mention}",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            await send_to_log_channel(guild, "", log_embed)
+        
+    except Exception as e:
+        print(f"❌ Error auto-setting up welcome channel: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def update_welcome_message_id(new_message_id: int):
+    """
+    Update the rules message ID in config.txt.
+    
+    Args:
+        new_message_id: The new message ID to save
+    """
+    try:
+        # Read current config
+        config_dict = {}
+        try:
+            with open('config.txt', 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        config_dict[key.strip()] = value.strip()
+        except FileNotFoundError:
+            print("❌ config.txt not found")
+            return
+        
+        # Update the message ID
+        config_dict['RULES_MESSAGE_ID'] = str(new_message_id)
+        
+        # Write updated config back
+        with open('config.txt', 'w') as f:
+            for key, value in config_dict.items():
+                f.write(f"{key}={value}\n")
+        
+        # Update the global variable
+        globals()['RULES_MESSAGE_ID'] = new_message_id
+        
+        print(f"✅ Updated rules message ID to: {new_message_id}")
+        
+    except Exception as e:
+        print(f"❌ Error updating config file: {e}")
+
+# =============================================================================
 # CHANNEL CLEARING FUNCTION
 # =============================================================================
 @bot_command.command(name="clear_channel")
@@ -5643,7 +5712,6 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
 # =============================================================================
 # UPDATE ON_READY TO AUTO-PIN
 # =============================================================================
-
 @bot.event
 async def on_ready():
     """Bot startup initialization and system verification."""
@@ -5691,15 +5759,17 @@ async def on_ready():
         print(f'🏠 Server: {guild.name} (ID: {guild.id})')
         
         # Register persistent views
+        bot.add_view(RulesRegistrationView())
         bot.add_view(GeneralChatButtonView())
         
         # Re-register delete button views for existing private chats
         await reinitialize_private_chat_views()
         
-        # AUTO-PIN BOT COMMAND MESSAGE
-        await auto_setup_command_chat()
-
-        await auto_setup_general_chat_button()
+        # AUTO-SETUP CHANNELS ON STARTUP
+        print("\n🔄 Auto-setting up channels on startup...")
+        await auto_setup_welcome_channel()  # NEW: Setup welcome channel (rules message)
+        await auto_setup_command_chat()     # Setup bot command channel
+        await auto_setup_general_chat_button()  # Setup general-chat button
         
         # Verify monitored channels
         print("\n📢 MONITORED CHANNELS (messages will create private chats):")
