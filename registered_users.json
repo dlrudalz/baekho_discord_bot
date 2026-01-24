@@ -840,8 +840,8 @@
     "gender": "father",
     "registered_at": "2026-01-20T23:37:28.253256+00:00",
     "programs": [],
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1464042027816714351,
     "roles": [
       "Family Member"
     ]
@@ -870,8 +870,8 @@
     "programs": [
       "after_school"
     ],
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1464045747539280098,
     "roles": [
       "Family Member",
       "After School"
@@ -954,6 +954,333 @@
     "nickname": "Barrett Yee's Mother",
     "gender": "mother",
     "registered_at": "2026-01-21T01:01:25.395908+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1404501747875057726": {
+    "child_name": "Kaiser Denton",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Kaiser Denton's Father",
+    "gender": "father",
+    "registered_at": "2026-01-21T22:34:15.961326+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "1463666795465412811": {
+    "child_name": "Wyatt Shinpaugh",
+    "role": "Grandmother",
+    "role_display": "\ud83d\udc75 Grandmother",
+    "nickname": "Wyatt Shinpaugh's Grandmother",
+    "gender": "grandmother",
+    "registered_at": "2026-01-21T22:52:30.014985+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "1461139321024282730": {
+    "child_name": "Jacob Frantz",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Jacob Frantz's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T22:54:45.424116+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1145183871441305680": {
+    "child_name": "Tejas Sharma",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Tejas Sharma's Father",
+    "gender": "father",
+    "registered_at": "2026-01-21T23:04:40.968373+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1317619826931531837": {
+    "child_name": "Legend Bodden",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Legend Bodden's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T23:10:56.570480+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463676264136183940": {
+    "child_name": "Noah Goitom",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Noah Goitom's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-21T23:31:20.466736+00:00",
+    "programs": [
+      "after_school",
+      "demonstration"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "Demonstration Team",
+      "After School"
+    ]
+  },
+  "1461153150051291280": {
+    "child_name": "Benedict Joshy",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Benedict Joshy's Father",
+    "gender": "father",
+    "registered_at": "2026-01-22T00:14:39.087723+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463688693348044958": {
+    "child_name": "Jerald Robins",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Jerald Robins's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T00:20:28.950873+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1464020210624233628": {
+    "child_name": "Grayson Alonso",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Grayson Alonso's Father",
+    "gender": "father",
+    "registered_at": "2026-01-22T22:20:34.349501+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "1464033201130311882": {
+    "child_name": "Claire Vu",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Claire Vu's Father",
+    "gender": "father",
+    "registered_at": "2026-01-22T23:09:48.227810+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1464037483825336472": {
+    "child_name": "Benjamin Broome",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Benjamin Broome's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T23:27:15.930596+00:00",
+    "programs": [
+      "demonstration",
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "Demonstration Team",
+      "After School"
+    ]
+  },
+  "1464038596825579643": {
+    "child_name": "Ethan Jo",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Ethan Jo's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T23:29:44.571276+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1464039173097914450": {
+    "child_name": "Tanny Mendez",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Tanny Mendez's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T23:32:44.745231+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "776927385433014292": {
+    "child_name": "David Tran",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "David Tran's Father",
+    "gender": "father",
+    "registered_at": "2026-01-22T23:40:58.587798+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463316808219230334": {
+    "child_name": "Arham Ahmed",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Arham Ahmed's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T23:42:04.832905+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1463696465078652938": {
+    "child_name": "Evan Amanuel",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Evan Amanuel's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-22T23:49:03.433519+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "1142061987430412298": {
+    "child_name": "Aarush Singh",
+    "role": "Student",
+    "role_display": "\ud83c\udf93 Student",
+    "nickname": "Aarush Singh",
+    "gender": "student",
+    "registered_at": "2026-01-22T23:49:32.157509+00:00",
+    "programs": [
+      "national"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student",
+      "National Team"
+    ]
+  },
+  "819442740537589792": {
+    "child_name": "Ilvan Mahmud",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Ilvan Mahmud's Father",
+    "gender": "father",
+    "registered_at": "2026-01-23T00:18:19.390331+00:00",
+    "programs": [
+      "national",
+      "demonstration"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team",
+      "Demonstration Team"
+    ]
+  },
+  "1461878512427204671": {
+    "child_name": "Peyton Ramirez",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Peyton Ramirez's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-23T01:02:10.431494+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1464073573403594785": {
+    "child_name": "Haset Bezu",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Haset Bezu's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-23T01:53:24.008102+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1461145923642986648": {
+    "child_name": "Hasan Tamimi",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Hasan Tamimi's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-24T00:18:53.028881+00:00",
     "programs": [],
     "has_active_private_chat": false,
     "private_chat_channel_id": null,
