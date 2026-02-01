@@ -24,96 +24,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-# =============================================================================
-# WATCHDOG INTEGRATION - ADD THIS AT THE TOP OF monitor.py
-# =============================================================================
-import socket
-import json
-import time
-from threading import Thread
 
-class WatchdogClient:
-    """Client for communicating with watchdog supervisor."""
-    
-    def __init__(self):
-        self.watchdog_port = 9999
-        self.heartbeat_interval = 30  # seconds
-        self.running = False
-        self.heartbeat_thread = None
-    
-    def send_heartbeat(self):
-        """Send heartbeat to watchdog."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(2)
-                s.connect(('localhost', self.watchdog_port))
-                heartbeat = {
-                    'bot': 'monitor',
-                    'timestamp': time.time(),
-                    'status': 'alive'
-                }
-                s.send(json.dumps(heartbeat).encode())
-                return True
-        except:
-            return False
-    
-    def start_heartbeat(self):
-        """Start heartbeat thread."""
-        self.running = True
-        
-        def heartbeat_loop():
-            while self.running:
-                try:
-                    if not self.send_heartbeat():
-                        print("⚠️ Could not send heartbeat to watchdog")
-                except Exception as e:
-                    print(f"⚠️ Heartbeat error: {e}")
-                
-                # Sleep for interval
-                for _ in range(self.heartbeat_interval * 10):
-                    if not self.running:
-                        break
-                    time.sleep(0.1)
-        
-        self.heartbeat_thread = Thread(target=heartbeat_loop, daemon=True)
-        self.heartbeat_thread.start()
-        print("💓 Heartbeat started for watchdog")
-    
-    def stop(self):
-        """Stop heartbeat."""
-        self.running = False
-        if self.heartbeat_thread:
-            self.heartbeat_thread.join(timeout=2)
-        print("💓 Heartbeat stopped")
-
-# Create watchdog client instance
-watchdog_client = WatchdogClient()
-
-# =============================================================================
-# MODIFIED ERROR HANDLER - ADD THIS BEFORE bot.run()
-# =============================================================================
-def run_bot_with_watchdog():
-    """Run bot with watchdog integration."""
-    try:
-        # Start heartbeat
-        watchdog_client.start_heartbeat()
-        
-        # Run the bot
-        bot.run(TOKEN)
-        
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR in monitor: {e}")
-        print("🛑 Shutting down due to critical error...")
-        
-        # Stop heartbeat
-        watchdog_client.stop()
-        
-        # Exit with error code
-        import sys
-        sys.exit(1)
-    
-    finally:
-        watchdog_client.stop()
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -155,7 +66,7 @@ DISK_WARNING = 85.0  # % - Warning threshold
 DISK_CRITICAL = 95.0 # % - Critical threshold
 
 # Monitoring intervals (in seconds)
-MONITOR_INTERVAL = 300  # 5 minutes for regular checks
+MONITOR_INTERVAL = 30  # 5 minutes for regular checks
 CRITICAL_MONITOR_INTERVAL = 60  # 1 minute when in critical state
 ALERT_COOLDOWN = 900  # 15 minutes between repeated alerts for same issue
 
@@ -895,13 +806,13 @@ async def on_command_error(ctx, error):
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
+
 if __name__ == "__main__":
     """
-    Main entry point for the system monitor bot with watchdog.
+    Main entry point for the system monitor bot.
     """
     print("\n" + "="*50)
     print("🚀 Starting Raspberry Pi System Health Monitor")
-    print("🔗 Watchdog integration: ENABLED")
     print("="*50)
     
     # Validate configuration
@@ -947,9 +858,6 @@ if __name__ == "__main__":
     print(f"   Disk: ⚠️{DISK_WARNING}% {DISK_CRITICAL}%")
     print(f"   Registry: ⚠️{JSON_SIZE_WARNING/(1024*1024):.1f}MB {JSON_SIZE_CRITICAL/(1024*1024):.1f}MB")
     print("="*50)
-    
-    # Start the bot with watchdog
-    run_bot_with_watchdog()
     
     # Start the bot
     try:

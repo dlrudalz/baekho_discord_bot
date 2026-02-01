@@ -1,258 +1,198 @@
+#!/usr/bin/env python3
 """
-WATCHDOG SUPERVISOR - Ensures both bots go offline if one fails
-===============================================================
-Monitors both mainbot.py and monitor.py processes and ensures
-they both go offline if either one fails.
+Supervisor for Baekho Bot System
+=================================
+Manages "main_bot.py and monitor.py to ensure both run together.
+If either script crashes, both are terminated.
 
 Author: Baekho Bot System
 Version: 1.0.0
+For: Raspberry Pi 4
 """
 
 import subprocess
-import time
-import signal
 import sys
 import os
-from datetime import datetime
+import time
+import signal
 import threading
-import json
+from datetime import datetime
 
 class BotSupervisor:
     def __init__(self):
         self.mainbot_process = None
         self.monitor_process = None
         self.running = False
-        self.restart_attempts = {}
-        self.max_restart_attempts = 3
-        self.restart_delay = 5  # seconds
+        self.mainbot_output = []
+        self.monitor_output = []
         
-    def start_bot(self, script_name):
-        """Start a bot process."""
+    def start_bots(self):
+        """Start both bots as subprocesses"""
+        print("=" * 60)
+        print("🤖 BAEKHO BOT SUPERVISOR")
+        print("=" * 60)
+        print(f"Starting at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+        
+        # Start mainbot.py
+        print("🚀 Starting Main Bot...")
+        self.mainbot_process = subprocess.Popen(
+            [sys.executable, "main_bot.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        # Start monitor.py
+        print("📊 Starting System Monitor...")
+        self.monitor_process = subprocess.Popen(
+            [sys.executable, "monitor.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        self.running = True
+        
+        # Start output readers
+        self.mainbot_thread = threading.Thread(
+            target=self.read_output,
+            args=(self.mainbot_process, "MAINBOT", self.mainbot_output)
+        )
+        self.monitor_thread = threading.Thread(
+            target=self.read_output,
+            args=(self.monitor_process, "MONITOR", self.monitor_output)
+        )
+        
+        self.mainbot_thread.daemon = True
+        self.monitor_thread.daemon = True
+        self.mainbot_thread.start()
+        self.monitor_thread.start()
+        
+        # Start status monitor
+        self.status_thread = threading.Thread(target=self.monitor_status)
+        self.status_thread.daemon = True
+        self.status_thread.start()
+        
+        print("\n✅ Both bots are now running!")
+        print("📺 Output from both bots will appear below:")
+        print("-" * 60)
+        
+        # Wait for both processes
         try:
-            print(f"🚀 Starting {script_name}...")
-            
-            if script_name == "mainbot":
-                cmd = [sys.executable, "main_bot.py"]
-                self.mainbot_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True
-                )
-                return self.mainbot_process
-                
-            elif script_name == "monitor":
-                cmd = [sys.executable, "monitor.py"]
-                self.monitor_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True
-                )
-                return self.monitor_process
-                
+            while self.running:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\n\n🛑 Supervisor interrupted by user")
+            self.shutdown()
+    
+    def read_output(self, process, prefix, output_list):
+        """Read and display output from a process"""
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    formatted_line = f"[{timestamp}] [{prefix}] {line.rstrip()}"
+                    output_list.append(formatted_line)
+                    print(formatted_line)
         except Exception as e:
-            print(f"❌ Error starting {script_name}: {e}")
-            return None
+            print(f"[ERROR] Error reading output from {prefix}: {e}")
     
-    def monitor_output(self, process, bot_name):
-        """Monitor bot output in a separate thread."""
-        def read_output():
-            while process and process.poll() is None:
-                try:
-                    line = process.stdout.readline()
-                    if line:
-                        timestamp = datetime.now().strftime('%H:%M:%S')
-                        print(f"[{timestamp}] [{bot_name}] {line.strip()}")
-                except:
-                    break
-                    
-            # Read remaining output
-            try:
-                stdout, stderr = process.communicate(timeout=1)
-                if stdout:
-                    timestamp = datetime.now().strftime('%H:%M:%S')
-                    print(f"[{timestamp}] [{bot_name}] [EXIT] {stdout.strip()}")
-                if stderr:
-                    timestamp = datetime.now().strftime('%H:%M:%S')
-                    print(f"[{timestamp}] [{bot_name}] [ERROR] {stderr.strip()}")
-            except:
-                pass
-        
-        thread = threading.Thread(target=read_output, daemon=True)
-        thread.start()
+    def monitor_status(self):
+        """Monitor the status of both bots"""
+        while self.running:
+            time.sleep(1)
+            
+            # Check mainbot status
+            if self.mainbot_process and self.mainbot_process.poll() is not None:
+                print("\n⚠️ MAINBOT has stopped!")
+                self.shutdown()
+                break
+                
+            # Check monitor status
+            if self.monitor_process and self.monitor_process.poll() is not None:
+                print("\n⚠️ MONITOR has stopped!")
+                self.shutdown()
+                break
     
-    def check_process_status(self):
-        """Check if both processes are running."""
-        mainbot_alive = self.mainbot_process and self.mainbot_process.poll() is None
-        monitor_alive = self.monitor_process and self.monitor_process.poll() is None
+    def shutdown(self):
+        """Shutdown both bots gracefully"""
+        if not self.running:
+            return
+            
+        print("\n" + "=" * 60)
+        print("🛑 SHUTTING DOWN BOTS...")
+        print("=" * 60)
         
-        status = {
-            'mainbot': mainbot_alive,
-            'monitor': monitor_alive,
-            'timestamp': datetime.now().isoformat()
-        }
+        self.running = False
         
-        return status
-    
-    def shutdown_all(self, reason="Supervisor shutdown"):
-        """Shutdown all bot processes."""
-        print(f"\n🛑 Shutting down all bots: {reason}")
-        
+        # Terminate mainbot
         if self.mainbot_process and self.mainbot_process.poll() is None:
-            print("🛑 Stopping mainbot...")
+            print("Terminating Main Bot...")
             try:
                 self.mainbot_process.terminate()
                 self.mainbot_process.wait(timeout=5)
-            except:
-                try:
-                    self.mainbot_process.kill()
-                except:
-                    pass
-            print("✅ Mainbot stopped")
+            except subprocess.TimeoutExpired:
+                print("Main Bot didn't terminate gracefully, forcing kill...")
+                self.mainbot_process.kill()
+            except Exception as e:
+                print(f"Error terminating Main Bot: {e}")
         
+        # Terminate monitor
         if self.monitor_process and self.monitor_process.poll() is None:
-            print("🛑 Stopping monitor...")
+            print("Terminating System Monitor...")
             try:
                 self.monitor_process.terminate()
                 self.monitor_process.wait(timeout=5)
-            except:
-                try:
-                    self.monitor_process.kill()
-                except:
-                    pass
-            print("✅ Monitor stopped")
-        
-        self.running = False
-    
-    def restart_bot(self, bot_name):
-        """Restart a failed bot."""
-        if bot_name not in self.restart_attempts:
-            self.restart_attempts[bot_name] = 0
-        
-        if self.restart_attempts[bot_name] >= self.max_restart_attempts:
-            print(f"❌ Max restart attempts ({self.max_restart_attempts}) reached for {bot_name}")
-            self.shutdown_all(f"{bot_name} failed too many times")
-            return False
-        
-        self.restart_attempts[bot_name] += 1
-        print(f"🔄 Restarting {bot_name} (attempt {self.restart_attempts[bot_name]}/{self.max_restart_attempts})...")
-        
-        # Clean up old process
-        if bot_name == "mainbot" and self.mainbot_process:
-            try:
-                self.mainbot_process.kill()
-            except:
-                pass
-        elif bot_name == "monitor" and self.monitor_process:
-            try:
+            except subprocess.TimeoutExpired:
+                print("System Monitor didn't terminate gracefully, forcing kill...")
                 self.monitor_process.kill()
-            except:
-                pass
+            except Exception as e:
+                print(f"Error terminating System Monitor: {e}")
         
-        # Start new process
-        time.sleep(self.restart_delay)
+        print("\n✅ Both bots have been terminated.")
+        print(f"Shutdown at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
-        if bot_name == "mainbot":
-            self.mainbot_process = self.start_bot("mainbot")
-            if self.mainbot_process:
-                self.monitor_output(self.mainbot_process, "MAINBOT")
-        elif bot_name == "monitor":
-            self.monitor_process = self.start_bot("monitor")
-            if self.monitor_process:
-                self.monitor_output(self.monitor_process, "MONITOR")
-        
-        return True
+        # Exit supervisor
+        sys.exit(0)
     
-    def run(self):
-        """Main supervisor loop."""
-        print("=" * 60)
-        print("🦮 BAEKHO BOT SUPERVISOR")
-        print("=" * 60)
-        print("Starting both bots with automatic failure handling...")
-        print(f"Max restart attempts: {self.max_restart_attempts}")
-        print("=" * 60)
-        
-        self.running = True
-        self.restart_attempts = {'mainbot': 0, 'monitor': 0}
-        
-        # Start both bots
-        print("\n🚀 Initial bot startup...")
-        self.mainbot_process = self.start_bot("mainbot")
-        self.monitor_process = self.start_bot("monitor")
-        
-        if self.mainbot_process:
-            self.monitor_output(self.mainbot_process, "MAINBOT")
-        if self.monitor_process:
-            self.monitor_output(self.monitor_process, "MONITOR")
-        
-        print("\n✅ Both bots started. Monitoring...")
-        print("Press Ctrl+C to shutdown all bots gracefully.")
-        print("-" * 60)
-        
-        # Main monitoring loop
-        last_status_check = time.time()
-        status_check_interval = 10  # seconds
-        
-        try:
-            while self.running:
-                time.sleep(1)
-                
-                # Check status periodically
-                current_time = time.time()
-                if current_time - last_status_check >= status_check_interval:
-                    status = self.check_process_status()
-                    
-                    if not status['mainbot'] and self.mainbot_process:
-                        print(f"❌ Mainbot process failed! Exit code: {self.mainbot_process.poll()}")
-                        self.shutdown_all("Mainbot process failed")
-                        break
-                    
-                    if not status['monitor'] and self.monitor_process:
-                        print(f"❌ Monitor process failed! Exit code: {self.monitor_process.poll()}")
-                        self.shutdown_all("Monitor process failed")
-                        break
-                    
-                    last_status_check = current_time
-                
-                # Quick check for immediate failures
-                if self.mainbot_process and self.mainbot_process.poll() is not None:
-                    print(f"❌ Mainbot exited unexpectedly! Exit code: {self.mainbot_process.poll()}")
-                    self.shutdown_all("Mainbot exited unexpectedly")
-                    break
-                
-                if self.monitor_process and self.monitor_process.poll() is not None:
-                    print(f"❌ Monitor exited unexpectedly! Exit code: {self.monitor_process.poll()}")
-                    self.shutdown_all("Monitor exited unexpectedly")
-                    break
-        
-        except KeyboardInterrupt:
-            print("\n🛑 Supervisor interrupted by user")
-            self.shutdown_all("User interrupt")
-        
-        except Exception as e:
-            print(f"❌ Supervisor error: {e}")
-            self.shutdown_all(f"Supervisor error: {e}")
-        
-        finally:
-            print("\n" + "=" * 60)
-            print("👋 Supervisor shutdown complete")
-            print("=" * 60)
+    def signal_handler(self, signum, frame):
+        """Handle termination signals"""
+        print(f"\n📶 Received signal {signum}, shutting down...")
+        self.shutdown()
 
-def signal_handler(sig, frame):
-    """Handle interrupt signals."""
-    print("\n🛑 Received shutdown signal")
-    sys.exit(0)
-
-if __name__ == "__main__":
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+def main():
+    # Check if required files exist
+    required_files = ["main_bot.py", "monitor.py", "config.txt"]
+    missing_files = []
+    
+    for file in required_files:
+        if not os.path.exists(file):
+            missing_files.append(file)
+    
+    if missing_files:
+        print("❌ ERROR: Missing required files:")
+        for file in missing_files:
+            print(f"   - {file}")
+        print("\nPlease ensure all files are in the same directory.")
+        sys.exit(1)
     
     # Create and run supervisor
     supervisor = BotSupervisor()
-    supervisor.run()
+    
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, supervisor.signal_handler)
+    signal.signal(signal.SIGTERM, supervisor.signal_handler)
+    
+    try:
+        supervisor.start_bots()
+    except Exception as e:
+        print(f"\n❌ SUPERVISOR ERROR: {e}")
+        supervisor.shutdown()
+
+if __name__ == "__main__":
+    main()
