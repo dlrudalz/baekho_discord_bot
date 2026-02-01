@@ -2019,54 +2019,6 @@ async def reinitialize_private_chat_views():
     # Save updated registered users
     save_registered_users(registered_users)
     print(f"✅ Reinitialization complete. Found {len(private_channels)} existing private chats.")
-    
-async def cleanup_user_data(user_id: int) -> None:
-    """
-    Clean up all data associated with a user when they leave.
-    
-    Removes:
-    - Registration data
-    - User state tracking
-    - Active conversations
-    - Private chat references
-    
-    Args:
-        user_id: Discord user ID to clean up
-    """
-    user_id_str = str(user_id)
-    
-    # Remove from registered users
-    if user_id_str in registered_users:
-        del registered_users[user_id_str]
-        save_registered_users(registered_users)
-        print(f"🗑️ Deleted registration data for user ID {user_id}")
-    
-    # Remove from user states
-    if user_id in user_states:
-        del user_states[user_id]
-        print(f"🗑️ Removed user state for user ID {user_id}")
-    
-    # Remove from active conversations
-    if user_id in active_conversations:
-        # Clean up message references
-        message_ids_to_remove = []
-        for admin_msg_id, user_msg_id in message_references.items():
-            if user_msg_id == user_id:
-                message_ids_to_remove.append(admin_msg_id)
-        
-        for msg_id in message_ids_to_remove:
-            del message_references[msg_id]
-        
-        del active_conversations[user_id]
-        print(f"🗑️ Removed active conversations for user ID {user_id}")
-    
-    # Remove private chat reference
-    if user_id in user_private_channels:
-        channel_id = user_private_channels[user_id]
-        if channel_id in private_channels:
-            del private_channels[channel_id]
-        del user_private_channels[user_id]
-        print(f"🗑️ Removed private chat reference for user ID {user_id}")
 
 def migrate_existing_users():
     """Migrate existing registered users to include proper structure."""
@@ -2555,37 +2507,6 @@ async def remove_green_check_reaction(member: discord.Member) -> None:
     print(f"⚠️ Note: Registration now uses buttons. No green check reactions to remove for {member.name}")
     return  # Do nothing - we're using buttons now
 
-async def handle_master_lee_family_member(member: discord.Member) -> None:
-    """Handle Master Lee's Family members (exempt from registration)."""
-    print(f"✅ User {member.name} has Master Lee's Family role, skipping DM process")
-    try:
-        dm_channel = await member.create_dm()
-        welcome_embed = discord.Embed(
-            title="👑 Welcome Master Lee's Family Member!",
-            description="As a member of Master Lee's Family, you have full access to the server.\n\n"
-                      "You don't need to complete the standard registration process.\n"
-                      "Enjoy your stay in our community!",
-            color=discord.Color.gold()
-        )
-        await dm_channel.send(embed=welcome_embed)
-    except discord.Forbidden:
-        print(f"⚠️ Cannot send DM to {member.name}")
-
-async def notify_already_registered(member: discord.Member) -> None:
-    """Notify user they are already registered."""
-    print(f"⚠️ User {member.name} already registered")
-    try:
-        dm_channel = await member.create_dm()
-        already_registered_embed = discord.Embed(
-            title="✅ Already Registered",
-            description="You are already registered in our system!\n\n"
-                      "Your green check mark is locked and cannot be removed.",
-            color=discord.Color.green()
-        )
-        await dm_channel.send(embed=already_registered_embed)
-    except discord.Forbidden:
-        print(f"⚠️ Cannot send DM to {member.name}")
-
 async def log_registration_start(guild: discord.Guild, member: discord.Member) -> None:
     """Log registration start event."""
     embed = discord.Embed(
@@ -2671,37 +2592,6 @@ async def delete_original_message(message: discord.Message) -> None:
 # =============================================================================
 # MESSAGE HANDLING FUNCTIONS
 # =============================================================================
-async def handle_monitored_channel_message(message: discord.Message):
-    """
-    Process messages from monitored channels by creating/using private chats.
-    
-    Features:
-    - Thread-safe processing with locks
-    - Automatic private chat creation
-    - Message forwarding with attachments
-    - Comprehensive logging
-    """
-    # Use lock to prevent concurrent processing issues
-    async with processing_lock:
-        guild = message.guild
-        user = message.author
-        
-        # Log message before forwarding
-        await log_monitored_message(guild, user, message)
-        
-        # Create or get existing private chat
-        private_chat = await create_private_channel(guild, user, message.channel.name)
-        
-        if not private_chat:
-            print(f"❌ Failed to create private chat for {user.name}")
-            return
-        
-        # Forward message to private chat
-        await forward_message_to_private_chat(private_chat, user, message)
-        
-        # Delete original message
-        await delete_original_message(message)
-
 async def log_monitored_message(guild: discord.Guild, user: discord.Member, message: discord.Message) -> None:
     """Log monitored channel message to log channel."""
     embed = discord.Embed(
@@ -6364,6 +6254,1012 @@ async def before_update_json_task():
     """Wait for bot to be ready before starting the task."""
     await bot.wait_until_ready()
     print("⏰ 24-hour JSON update task is waiting to start...")
+
+# =============================================================================
+# CHANNEL PERMISSION CONFIGURATION
+# =============================================================================
+
+# Define channel permission mappings in a structured way
+CHANNEL_PERMISSIONS_CONFIG = {
+    # Category-wide permissions
+    "categories": {
+        # 🤖 BOT category (admin only)
+        "🤖 BOT": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone
+                    "view_channel": False,
+                    "read_messages": False
+                },
+                "roles": {
+                    "admin_user": {  # Admin user (by member)
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "manage_permissions": True
+                    },
+                    "bot": {  # Bot itself
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "manage_permissions": True
+                    },                    
+                    "Master Lee's Family": {  # Full access
+                        "view_channel": True,  # ← ADD THIS LINE
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True,
+                        "manage_channels": True,  # ← Consider adding this too
+                        "manage_permissions": True  # ← Consider adding this too
+                    },
+                    "Instructor": {  # Special role - NO ACCESS
+                        "view_channel": False,
+                        "read_messages": False
+                    }
+                }
+            }
+        },
+        
+        # 🔒 PRIVATE CONVERSATIONS category (admin only)
+        "🔒 PRIVATE CONVERSATIONS": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone
+                    "view_channel": False,
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "admin_user": {  # Admin user (by member)
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "read_message_history": True
+                    },
+                    "Master Lee's Family": {  # Special role - NO ACCESS
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "read_message_history": True
+                    },
+                    "Instructor": {  # Special role - NO ACCESS
+                        "view_channel": False,
+                        "read_messages": False
+                    }
+                }
+            }
+        }
+    },
+    
+    # Individual channel permissions
+    "channels": {
+        # Schedule channel - visible to everyone with different access levels
+
+        "schedule": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False,
+                    "view_channel": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Family Member": {  # READ ONLY
+                        "read_messages": True,
+                        "send_messages": False,  # READ ONLY
+                        "view_channel": True,
+                        "read_message_history": True
+                    },
+                    "Student": {  # READ ONLY (same as Family Member)
+                        "read_messages": True,
+                        "send_messages": False,  # READ ONLY
+                        "view_channel": True,
+                        "read_message_history": True
+                    },
+                    "Instructor": {  # Full access (same as Master Lee's Family)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "manage_channels": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "manage_channels": True
+                    }
+                }
+            }
+        },
+        
+        # General-chat - visible to everyone but different posting rights
+        "general-chat": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False,
+                    "view_channel": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Can see AND send messages
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Family Member": {  # Can see but CANNOT send messages
+                        "read_messages": True,
+                        "send_messages": False,  # CANNOT SEND
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "add_reactions": False
+                    },
+                    "Student": {  # Can see but CANNOT send messages (same as Family Member)
+                        "read_messages": True,
+                        "send_messages": False,  # CANNOT SEND
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "add_reactions": False
+                    },
+                    "Instructor": {  # Can see AND send messages
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "manage_messages": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "manage_messages": True
+                    }
+                }
+            }
+        },
+        
+        # Welcome channel - public read-only
+        "welcome": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - public read-only
+                    "read_messages": True,
+                    "send_messages": False,  # READ ONLY
+                    "read_message_history": True
+                }
+            }
+        },
+        
+        # Announcement channels - role-specific access
+        "announcements": {
+            "channel_pattern": "announcements",  # Matches any channel with "announcements" in name
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access to all announcements
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Instructor": {  # Full access to all announcements
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "Family Member": {  # Can see but CANNOT send messages
+                        "read_messages": True,
+                        "send_messages": False,  # CANNOT SEND
+                        "view_channel": True,
+                        "read_message_history": True,
+                        "add_reactions": False
+                    },
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        },
+        
+        # National Team announcement channel - specific role access
+        "national-team-announcements": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Instructor": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "National Team": {  # READ ONLY for team members
+                        "read_messages": True,
+                        "send_messages": False,  # READ ONLY
+                        "read_message_history": True
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        },
+        
+        # Demonstration Team announcement channel - specific role access
+        "demonstration-team-announcements": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Instructor": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "Demonstration Team": {  # READ ONLY for team members
+                        "read_messages": True,
+                        "send_messages": False,  # READ ONLY
+                        "read_message_history": True
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        },
+        
+        # After School announcement channel - specific role access
+        "after-school-announcements": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True
+                    },
+                    "Instructor": {  # Full access
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "After School": {  # READ ONLY for team members
+                        "read_messages": True,
+                        "send_messages": False,  # READ ONLY
+                        "read_message_history": True
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        },
+        # 🔧 BOT CATEGORY CHANNELS
+        "bot-commands": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "view_channel": False,
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Full access to bot commands
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "read_message_history": True,
+                        "embed_links": True,
+                        "attach_files": True,
+                        "manage_messages": False,  # Keep this False unless you want them to delete messages
+                        "manage_channels": False  # Keep this False
+                    },
+                    "Instructor": {  # NO ACCESS to bot commands
+                        "view_channel": False,
+                        "read_messages": False,
+                        "send_messages": False
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "manage_permissions": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "manage_permissions": True,
+                        "manage_messages": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        },
+        
+        "bot-logs": {
+            "clear_existing": True,
+            "permissions": {
+                "default": {  # @everyone - can't see by default
+                    "view_channel": False,
+                    "read_messages": False,
+                    "send_messages": False
+                },
+                "roles": {
+                    "Master Lee's Family": {  # Read-only access to logs
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": False,  # Cannot send in logs
+                        "read_message_history": True
+                    },
+                    "Instructor": {  # NO ACCESS to logs
+                        "view_channel": False,
+                        "read_messages": False,
+                        "send_messages": False
+                    }
+                },
+                "members": {
+                    "admin_user": {  # Admin user (by member)
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": False,  # Admin shouldn't need to send here
+                        "manage_channels": True,
+                        "manage_permissions": True,
+                        "read_message_history": True
+                    },
+                    "bot": {  # Bot itself
+                        "view_channel": True,
+                        "read_messages": True,
+                        "send_messages": True,
+                        "manage_channels": True,
+                        "manage_permissions": True,
+                        "read_message_history": True
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Role name to ID mapping for easier reference
+ROLE_IDS = {
+    "Master Lee's Family": MASTER_LEE_FAMILY_ROLE_ID,
+    "Family Member": FAMILY_ROLE_ID,
+    "Student": STUDENT_ROLE_ID,
+    "Instructor": INSTRUCTOR_ROLE_ID,
+    "National Team": NATIONAL_TEAM_ROLE_ID,
+    "Demonstration Team": DEMONSTRATION_TEAM_ROLE_ID,
+    "After School": AFTER_SCHOOL_ROLE_ID
+}
+
+# =============================================================================
+# PERMISSION HELPER FUNCTIONS
+# =============================================================================
+
+async def clear_channel_permissions(channel):
+    """Clear all existing permissions from a channel."""
+    try:
+        # Clear @everyone permissions
+        await channel.set_permissions(channel.guild.default_role, overwrite=None)
+        
+        # Clear all other role and member permissions
+        for target, _ in channel.overwrites.items():
+            await channel.set_permissions(target, overwrite=None)
+        
+        return True
+    except Exception as e:
+        print(f"❌ Error clearing permissions for #{channel.name}: {e}")
+        return False
+
+async def apply_permission_overwrite(channel, target, permissions):
+    """Apply permission overwrite to a channel for a specific target."""
+    try:
+        # Get existing overwrite or create a new one
+        existing_overwrite = channel.overwrites_for(target)
+        if existing_overwrite:
+            overwrite = existing_overwrite
+        else:
+            overwrite = discord.PermissionOverwrite()
+        
+        # Set each permission from our configuration
+        for perm_name, perm_value in permissions.items():
+            if hasattr(overwrite, perm_name):
+                setattr(overwrite, perm_name, perm_value)
+            else:
+                print(f"⚠️ Unknown permission: {perm_name}")
+        
+        # Apply the overwrite
+        await channel.set_permissions(target, overwrite=overwrite)
+        return True
+    except Exception as e:
+        print(f"❌ Error applying permissions for {target} in #{channel.name}: {e}")
+        return False
+
+async def get_role_by_name(guild, role_name):
+    """Get a role by its display name from configuration."""
+    if role_name == "admin_user":
+        return guild.get_member(ADMIN_USER_ID)
+    elif role_name == "bot":
+        return guild.me
+    elif role_name in ROLE_IDS:
+        role_id = ROLE_IDS[role_name]
+        return guild.get_role(role_id)
+    else:
+        # Try to find role by name
+        return discord.utils.get(guild.roles, name=role_name)
+
+async def apply_channel_permissions(guild, channel, config):
+    """Apply permissions to a specific channel based on configuration."""
+    try:
+        channel_name = channel.name
+        print(f"🔧 Applying permissions to #{channel_name}...")
+        
+        # Clear existing permissions if configured
+        if config.get("clear_existing", True):
+            # For channels in categories, just sync with category
+            if channel.category:
+                await channel.edit(sync_permissions=True)
+                print(f"  ↳ Synced #{channel_name} with category #{channel.category.name}")
+            else:
+                # Clear all permissions for channels not in categories
+                for target, _ in channel.overwrites.items():
+                    await channel.set_permissions(target, overwrite=None)
+        
+        # If channel is in a category, we should apply category permissions
+        # But for now, let's just apply the specific channel permissions
+        permissions_config = config.get("permissions", {})
+        applied_count = 0
+        
+        # Apply default permissions (@everyone)
+        if "default" in permissions_config:
+            await apply_permission_overwrite(
+                channel, 
+                guild.default_role, 
+                permissions_config["default"]
+            )
+            applied_count += 1
+        
+        # Apply role permissions
+        if "roles" in permissions_config:
+            for role_name, role_perms in permissions_config["roles"].items():
+                role = await get_role_by_name(guild, role_name)
+                if role:
+                    await apply_permission_overwrite(channel, role, role_perms)
+                    applied_count += 1
+                else:
+                    print(f"⚠️ Role not found: {role_name}")
+        
+        # Apply member permissions
+        if "members" in permissions_config:
+            for member_name, member_perms in permissions_config["members"].items():
+                member = await get_role_by_name(guild, member_name)
+                if member:
+                    await apply_permission_overwrite(channel, member, member_perms)
+                    applied_count += 1
+                else:
+                    print(f"⚠️ Member not found: {member_name}")
+        
+        print(f"✅ Applied {applied_count} permission sets to #{channel_name}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error applying permissions to #{channel.name}: {e}")
+        return False
+
+# =============================================================================
+# RESTRUCTURED APPLY ROLE PERMISSIONS COMMAND
+# =============================================================================
+
+@bot_command.command(name="apply_role_permissions")
+@bot_channel_only()
+async def chat_apply_role_permissions(ctx, specific_channel: str = None):
+    """
+    Apply role permissions to all existing channels and categories based on configuration.
+    
+    Usage:
+    !bot_command apply_role_permissions - Apply to all channels
+    !bot_command apply_role_permissions schedule - Apply to specific channel
+    
+    This command uses the CHANNEL_PERMISSIONS_CONFIG to determine permissions.
+    """
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("❌ Only the configured admin can run this command.")
+        return
+    
+    guild = ctx.guild
+    
+    # Confirmation
+    if not specific_channel:
+        embed = discord.Embed(
+            title="🛠️ Apply Role Permissions",
+            description="**This will apply role permissions to ALL channels based on configuration.**\n\n"
+                      "**What it does:**\n"
+                      "• Clears all existing permissions first\n"
+                      "• Applies permissions from CHANNEL_PERMISSIONS_CONFIG\n"
+                      "• Updates ALL channels and categories in the server\n\n"
+                      "**Configuration includes:**\n"
+                      "• Channel-specific permissions\n"
+                      "• Role-based access control\n"
+                      "• Special handling for Master Lee's Family role\n\n"
+                      "Type `APPLY PERMISSIONS` to proceed.",
+            color=discord.Color.orange()
+        )
+        
+        await ctx.send(embed=embed)
+        
+        def check(msg):
+            return msg.author == ctx.author and msg.channel == ctx.channel and msg.content == "APPLY PERMISSIONS"
+        
+        try:
+            await bot.wait_for('message', timeout=30.0, check=check)
+        except:
+            await ctx.send("❌ Permission application cancelled (timeout).")
+            return
+    
+    await ctx.send("🔄 Applying role permissions... This may take a moment.")
+    
+    try:
+        # Track results
+        results = {
+            "categories": {"total": 0, "success": 0, "failed": 0},
+            "channels": {"total": 0, "success": 0, "failed": 0}
+        }
+        
+        # ========== APPLY CATEGORY PERMISSIONS ==========
+        print("\n" + "="*50)
+        print("🔄 Applying category permissions...")
+        print("="*50)
+        
+        category_config = CHANNEL_PERMISSIONS_CONFIG.get("categories", {})
+        
+        for category in guild.categories:
+            category_name = category.name
+            
+            # Skip if specific channel requested and this isn't it
+            if specific_channel and category_name.lower() != specific_channel.lower():
+                continue
+            
+            if category_name in category_config:
+                results["categories"]["total"] += 1
+                print(f"\n📁 Processing category: {category_name}")
+                
+                success = await apply_channel_permissions(guild, category, category_config[category_name])
+                
+                if success:
+                    results["categories"]["success"] += 1
+                    print(f"✅ Successfully applied permissions to category: {category_name}")
+                else:
+                    results["categories"]["failed"] += 1
+                    print(f"❌ Failed to apply permissions to category: {category_name}")
+        
+        # ========== APPLY CHANNEL PERMISSIONS ==========
+        print("\n" + "="*50)
+        print("🔄 Applying channel permissions...")
+        print("="*50)
+        
+        channel_config = CHANNEL_PERMISSIONS_CONFIG.get("channels", {})
+        
+        for channel in guild.channels:
+            # Skip categories (already processed) and voice channels
+            if isinstance(channel, discord.CategoryChannel):
+                continue
+            
+            channel_name = channel.name.lower()
+            
+            # Skip if specific channel requested and this isn't it
+            if specific_channel and channel_name != specific_channel.lower():
+                continue
+            
+            results["channels"]["total"] += 1
+            
+            # Find matching configuration for this channel
+            channel_config_to_apply = None
+            
+            # First, check for exact match
+            if channel.name in channel_config:
+                channel_config_to_apply = channel_config[channel.name]
+            
+            # If no exact match, check for pattern match
+            if not channel_config_to_apply:
+                for config_name, config_data in channel_config.items():
+                    pattern = config_data.get("channel_pattern")
+                    if pattern and pattern.lower() in channel_name:
+                        channel_config_to_apply = config_data
+                        break
+            
+            if channel_config_to_apply:
+                print(f"\n📝 Processing channel: #{channel.name}")
+                
+                success = await apply_channel_permissions(guild, channel, channel_config_to_apply)
+                
+                if success:
+                    results["channels"]["success"] += 1
+                    print(f"✅ Successfully applied permissions to #{channel.name}")
+                else:
+                    results["channels"]["failed"] += 1
+                    print(f"❌ Failed to apply permissions to #{channel.name}")
+            else:
+                # No configuration for this channel, skip it
+                results["channels"]["total"] -= 1
+                print(f"⏭️ Skipping #{channel.name} (no configuration found)")
+        
+        # ========== FINAL SUMMARY ==========
+        print("\n" + "="*50)
+        print("✅ ROLE PERMISSIONS APPLIED!")
+        print("="*50)
+        
+        # Create summary embed
+        total_success = results["categories"]["success"] + results["channels"]["success"]
+        total_failed = results["categories"]["failed"] + results["channels"]["failed"]
+        total_processed = results["categories"]["total"] + results["channels"]["total"]
+        
+        embed = discord.Embed(
+            title="✅ Role Permissions Applied!",
+            description="Permissions have been applied to all channels based on configuration.\n\n"
+                      f"**Total Processed:** {total_processed}\n"
+                      f"**Successfully Applied:** {total_success}\n"
+                      f"**Failed:** {total_failed}\n\n"
+                      "All channels now have proper role-based permissions.",
+            color=discord.Color.green()
+        )
+        
+        # Add category results
+        embed.add_field(
+            name="📁 Categories",
+            value=f"Total: {results['categories']['total']}\n"
+                  f"Success: {results['categories']['success']}\n"
+                  f"Failed: {results['categories']['failed']}",
+            inline=True
+        )
+        
+        # Add channel results
+        embed.add_field(
+            name="📝 Channels",
+            value=f"Total: {results['channels']['total']}\n"
+                  f"Success: {results['channels']['success']}\n"
+                  f"Failed: {results['channels']['failed']}",
+            inline=True
+        )
+        
+        # Add permission structure summary
+        embed.add_field(
+            name="🔐 Permission Structure Applied",
+            value="**BOT Category:** Admin-only\n"
+                  "**PRIVATE CONVERSATIONS:** Admin-only\n"
+                  "**Schedule:** Read-only for Family/Students, full for Admin/Master/Instructors\n"
+                  "**General-chat:** View-only for Family/Students, full for Admin/Master/Instructors\n"
+                  "**Welcome:** Public read-only\n"
+                  "**Announcements:** Role-based read-only access",
+            inline=False
+        )
+        
+        # Add special note about Master Lee's Family role
+        embed.add_field(
+            name="👑 Special Handling",
+            value="• **Master Lee's Family role** has full access to most channels\n"
+                  "• **Instructor role** has similar permissions to Master Lee's Family\n"
+                  "• **Family Member/Student roles** have view-only access\n"
+                  "• **Team roles** only see their specific announcement channels",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+        
+        # Send to log channel if it exists
+        log_channel = guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="🛠️ Role Permissions Applied",
+                description="Role permissions have been applied to all channels based on configuration.",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            log_embed.add_field(name="Applied By", value=ctx.author.mention, inline=True)
+            log_embed.add_field(name="Categories Processed", value=str(results["categories"]["total"]), inline=True)
+            log_embed.add_field(name="Channels Processed", value=str(results["channels"]["total"]), inline=True)
+            log_embed.add_field(name="Total Success", value=str(total_success), inline=True)
+            log_embed.add_field(name="Total Failed", value=str(total_failed), inline=True)
+            log_embed.set_footer(text="All channels updated with proper permissions")
+            await log_channel.send(embed=log_embed)
+        
+        print(f"\n📊 SUMMARY:")
+        print(f"  Categories: {results['categories']['success']}/{results['categories']['total']} successful")
+        print(f"  Channels: {results['channels']['success']}/{results['channels']['total']} successful")
+        print(f"  Total: {total_success}/{total_processed} successful")
+        print("="*50)
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Error Applying Permissions",
+            description=f"Unexpected error: {str(e)}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        print(f"❌ Apply permissions error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# =============================================================================
+# QUICK PERMISSION CHECK COMMAND
+# =============================================================================
+
+@bot_command.command(name="check_channel_permissions")
+@bot_channel_only()
+async def chat_check_channel_permissions(ctx, channel_name: str = None):
+    """
+    Check current permissions for a specific channel or all channels.
+    
+    Usage:
+    !bot_command check_channel_permissions - Check all channels
+    !bot_command check_channel_permissions general-chat - Check specific channel
+    """
+    guild = ctx.guild
+    
+    if channel_name:
+        # Check specific channel
+        channel = discord.utils.get(guild.channels, name=channel_name)
+        if not channel:
+            await ctx.send(f"❌ Channel '{channel_name}' not found.", ephemeral=True)
+            return
+        
+        await display_channel_permissions(ctx, channel)
+    else:
+        # Check all channels
+        await ctx.send("🔄 Checking permissions for all channels... This may take a moment.")
+        
+        channels_with_permissions = []
+        for channel in guild.channels:
+            if channel.overwrites:
+                channels_with_permissions.append(channel)
+        
+        if not channels_with_permissions:
+            await ctx.send("ℹ️ No channels have custom permissions set.")
+            return
+        
+        # Create paginated view
+        class PermissionsListView(discord.ui.View):
+            def __init__(self, channels):
+                super().__init__(timeout=60)
+                self.channels = channels
+                self.current_page = 0
+                self.pages = self.create_pages()
+            
+            def create_pages(self):
+                """Create paginated list of channels."""
+                pages = []
+                items_per_page = 10
+                
+                for i in range(0, len(self.channels), items_per_page):
+                    page_channels = self.channels[i:i + items_per_page]
+                    page_text = []
+                    
+                    for channel in page_channels:
+                        overwrite_count = len(channel.overwrites)
+                        page_text.append(f"• **#{channel.name}** ({channel.type.name}) - {overwrite_count} permission sets")
+                    
+                    pages.append("\n".join(page_text))
+                
+                return pages
+            
+            @discord.ui.button(label="⬅️ Previous", style=discord.ButtonStyle.secondary)
+            async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != ctx.author.id:
+                    await interaction.response.send_message("❌ This is not for you.", ephemeral=True)
+                    return
+                
+                self.current_page = (self.current_page - 1) % len(self.pages)
+                await self.update_message(interaction)
+            
+            @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.secondary)
+            async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if interaction.user.id != ctx.author.id:
+                    await interaction.response.send_message("❌ This is not for you.", ephemeral=True)
+                    return
+                
+                self.current_page = (self.current_page + 1) % len(self.pages)
+                await self.update_message(interaction)
+            
+            async def update_message(self, interaction):
+                embed = discord.Embed(
+                    title="📋 Channels with Custom Permissions",
+                    description=f"**Page {self.current_page + 1}/{len(self.pages)}**\n\n{self.pages[self.current_page]}",
+                    color=discord.Color.blue()
+                )
+                embed.set_footer(text=f"Total: {len(self.channels)} channels with custom permissions")
+                await interaction.response.edit_message(embed=embed, view=self)
+        
+        view = PermissionsListView(channels_with_permissions)
+        embed = discord.Embed(
+            title="📋 Channels with Custom Permissions",
+            description=f"**Page 1/{len(view.pages)}**\n\n{view.pages[0]}",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=f"Total: {len(channels_with_permissions)} channels with custom permissions")
+        
+        await ctx.send(embed=embed, view=view)
+
+async def display_channel_permissions(ctx, channel):
+    """Display detailed permissions for a specific channel."""
+    embed = discord.Embed(
+        title=f"🔐 Permissions for #{channel.name}",
+        description=f"**Type:** {channel.type.name}\n"
+                   f"**Category:** {channel.category.name if channel.category else 'None'}\n"
+                   f"**Permission Overwrites:** {len(channel.overwrites)}",
+        color=discord.Color.blue()
+    )
+    
+    if not channel.overwrites:
+        embed.add_field(name="ℹ️ No Custom Permissions", value="This channel uses default permissions.", inline=False)
+    else:
+        for target, overwrite in channel.overwrites.items():
+            target_name = target.name if hasattr(target, 'name') else str(target)
+            target_type = "Role" if isinstance(target, discord.Role) else "Member"
+            
+            # Format permissions
+            allowed = []
+            denied = []
+            
+            for perm, value in overwrite:
+                if value is True:
+                    allowed.append(f"`{perm}`")
+                elif value is False:
+                    denied.append(f"`{perm}`")
+            
+            perm_text = ""
+            if allowed:
+                perm_text += f"✅ **Allowed:** {', '.join(allowed[:5])}\n"
+                if len(allowed) > 5:
+                    perm_text += f"  ...and {len(allowed) - 5} more\n"
+            
+            if denied:
+                perm_text += f"❌ **Denied:** {', '.join(denied[:5])}\n"
+                if len(denied) > 5:
+                    perm_text += f"  ...and {len(denied) - 5} more"
+            
+            if not perm_text:
+                perm_text = "No specific permissions set"
+            
+            embed.add_field(
+                name=f"{target_type}: {target_name}",
+                value=perm_text,
+                inline=False
+            )
+    
+    await ctx.send(embed=embed, ephemeral=True)
 
 # =============================================================================
 # MANUAL UPDATE COMMAND

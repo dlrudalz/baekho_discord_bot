@@ -647,8 +647,8 @@
     "nickname": "Zachary Jurcak's Mother",
     "gender": "mother",
     "registered_at": "2026-01-16T23:24:28.733727+00:00",
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1465432866048573603,
     "roles": [
       "Family Member"
     ],
@@ -1286,6 +1286,137 @@
     "private_chat_channel_id": null,
     "roles": [
       "Family Member"
+    ]
+  },
+  "1282502523831324733": {
+    "child_name": "Ivette Leon",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Ivette Leon's Father",
+    "gender": "father",
+    "registered_at": "2026-01-24T04:25:54.365843+00:00",
+    "programs": [
+      "national"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team"
+    ]
+  },
+  "1462112333353586710": {
+    "child_name": "Darsh Sandra",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Darsh Sandra's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-26T22:23:22.502596+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "After School"
+    ]
+  },
+  "812795783291469855": {
+    "child_name": "Krish Manohar",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Krish Manohar's Father",
+    "gender": "father",
+    "registered_at": "2026-01-31T00:43:57.338411+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1466957370964840500": {
+    "child_name": "Jack Hughes",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Jack Hughes's Father",
+    "gender": "father",
+    "registered_at": "2026-01-31T00:47:28.030278+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "1466960513392050219": {
+    "child_name": "Liam Rettig",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Liam Rettig's Mother",
+    "gender": "mother",
+    "registered_at": "2026-01-31T01:02:07.540812+00:00",
+    "programs": [
+      "demonstration",
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "Demonstration Team",
+      "After School"
+    ]
+  },
+  "1467182248062091326": {
+    "child_name": "Kaylana Davong",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Kaylana Davong's Father",
+    "gender": "father",
+    "registered_at": "2026-01-31T15:41:28.867037+00:00",
+    "programs": [],
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1467183121287090226,
+    "roles": [
+      "Family Member"
+    ]
+  },
+  "996161550970802317": {
+    "child_name": "Emma Gatmaitan",
+    "role": "Student",
+    "role_display": "\ud83c\udf93 Student",
+    "nickname": "Emma Gatmaitan",
+    "gender": "student",
+    "registered_at": "2026-01-31T17:25:24.313016+00:00",
+    "programs": [
+      "after_school"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Student",
+      "After School"
+    ]
+  },
+  "1467333306419777538": {
+    "child_name": "Madeline Ngo",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Madeline Ngo's Mother",
+    "gender": "mother",
+    "registered_at": "2026-02-01T01:44:55.403139+00:00",
+    "programs": [
+      "demonstration",
+      "national"
+    ],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "National Team",
+      "Demonstration Team"
     ]
   }
 }
