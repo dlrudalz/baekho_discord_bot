@@ -28,6 +28,94 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 import time
 
+import socket
+import json
+import time
+from threading import Thread
+
+class WatchdogClient:
+    """Client for communicating with watchdog supervisor."""
+    
+    def __init__(self):
+        self.watchdog_port = 9999
+        self.heartbeat_interval = 30  # seconds
+        self.running = False
+        self.heartbeat_thread = None
+    
+    def send_heartbeat(self):
+        """Send heartbeat to watchdog."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2)
+                s.connect(('localhost', self.watchdog_port))
+                heartbeat = {
+                    'bot': 'mainbot',
+                    'timestamp': time.time(),
+                    'status': 'alive'
+                }
+                s.send(json.dumps(heartbeat).encode())
+                return True
+        except:
+            return False
+    
+    def start_heartbeat(self):
+        """Start heartbeat thread."""
+        self.running = True
+        
+        def heartbeat_loop():
+            while self.running:
+                try:
+                    if not self.send_heartbeat():
+                        print("⚠️ Could not send heartbeat to watchdog")
+                except Exception as e:
+                    print(f"⚠️ Heartbeat error: {e}")
+                
+                # Sleep for interval
+                for _ in range(self.heartbeat_interval * 10):
+                    if not self.running:
+                        break
+                    time.sleep(0.1)
+        
+        self.heartbeat_thread = Thread(target=heartbeat_loop, daemon=True)
+        self.heartbeat_thread.start()
+        print("💓 Heartbeat started for watchdog")
+    
+    def stop(self):
+        """Stop heartbeat."""
+        self.running = False
+        if self.heartbeat_thread:
+            self.heartbeat_thread.join(timeout=2)
+        print("💓 Heartbeat stopped")
+
+# Create watchdog client instance
+watchdog_client = WatchdogClient()
+
+# =============================================================================
+# MODIFIED ERROR HANDLER - ADD THIS BEFORE bot.run()
+# =============================================================================
+def run_bot_with_watchdog():
+    """Run bot with watchdog integration."""
+    try:
+        # Start heartbeat
+        watchdog_client.start_heartbeat()
+        
+        # Run the bot
+        bot.run(TOKEN)
+        
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR in mainbot: {e}")
+        print("🛑 Shutting down due to critical error...")
+        
+        # Stop heartbeat
+        watchdog_client.stop()
+        
+        # Exit with error code
+        import sys
+        sys.exit(1)
+    
+    finally:
+        watchdog_client.stop()
+
 # =============================================================================
 # CONFIGURATION MANAGEMENT
 # =============================================================================
@@ -8076,6 +8164,8 @@ if __name__ == "__main__":
         print("   Private chats will not be created!")
         print("   Please ensure setup program has run to create the category")
     
+    run_bot_with_watchdog()
+
     # Start the bot
     try:
         bot.run(TOKEN)
