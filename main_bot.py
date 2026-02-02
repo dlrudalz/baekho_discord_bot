@@ -27,6 +27,9 @@ import asyncio
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 import time
+import psutil
+import subprocess
+import platform
 
 # =============================================================================
 # CONFIGURATION MANAGEMENT
@@ -1579,13 +1582,14 @@ class RulesRegistrationView(discord.ui.View):
                       "2. **Check your DMs** - 백호 (baekho) will message you\n"
                       "3. **Follow the DM prompts** to enter:\n"
                       "   • Your child's name\n"
-                      "   • Your role (mother/father/grandparent)\n"
+                      "   • Your role (mother/father/grandparent/student)\n"
                       "   • Programs your child is in\n"
                       "4. **Review and confirm** your information\n\n"
                       "**After registration:**\n"
                       "• You'll get access to the server\n"
                       "• Use the 📩 button in general-chat to talk to us\n"
-                      "• Your nickname will be updated automatically",
+                      "• Your nickname will be updated automatically\n"
+                      "• You'll be added to relevant announcement channels",
             color=discord.Color.blue()
         )
         
@@ -4797,7 +4801,6 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
 # =============================================================================
 # AUTO-PIN BOT COMMAND ON STARTUP
 # =============================================================================
-
 async def auto_setup_command_chat():
     """
     Automatically send and pin the bot command help message on startup.
@@ -4834,22 +4837,7 @@ async def auto_setup_command_chat():
         if not bot_command_exists:
             print("📌 Creating and pinning bot command message...")
             
-            # Create the bot command embed
-            from discord.ext.commands import Context
-            from io import StringIO
-            import contextlib
-            
-            # Create a mock context to use the chat_command function
-            class MockContext:
-                def __init__(self, channel):
-                    self.channel = channel
-                    self.guild = guild
-                    self.send = channel.send
-                    self.author = guild.get_member(ADMIN_USER_ID) or guild.me
-            
-            mock_ctx = MockContext(bot_channel)
-            
-            # Call the chat_command function directly
+            # Create the bot command embed using the updated function
             embed = create_bot_commands_embed()
             message = await bot_channel.send(embed=embed)
             
@@ -4876,8 +4864,8 @@ def create_bot_commands_embed():
     embed = discord.Embed(
         title="💬 **ADMIN BOT COMMANDS**",
         description="**All commands must be used in this channel only.**\n\n"
-                   "Use `!bot_command chat [command_name]` or `!bot_command [command_name]`\n"
-                   "**Example:** `!bot_command chat view_user @user`\n",
+                   "Use `!bot_command [command_name]` or just `!bot_command` for main menu\n"
+                   "**Example:** `!bot_command view_user @user`\n",
         color=discord.Color.blue()
     )
     
@@ -4888,6 +4876,8 @@ def create_bot_commands_embed():
             "`active_private_chats` - Show all active private chats with activity status\n"
             "`active_chats` - Show active 1-on-1 conversations\n"
             "`register_stats` - Show registration statistics\n"
+            "`system_status` - Show Raspberry Pi system status\n"
+            "`monitoring_config` - View monitoring thresholds and settings\n"
         ),
         inline=False
     )
@@ -4900,9 +4890,9 @@ def create_bot_commands_embed():
             "`view_user_roles @user` - View JSON vs Discord role comparison\n"
             "`send_dm @user message` - Send direct message to user\n"
             "`assign_role @user add/remove role` - Add/remove any role (national_team, demonstration_team, after_school, student, instructor, master_family)\n"
-            "`update_discord_roles @user` - Update JSON from current Discord roles\n"
             "`fix_name @user new_name` - Fix user's registered name\n"
             "`remove_check @user` - Remove user's green check\n"
+            "`update_discord_roles` - Update Discord roles from JSON file\n"
         ),
         inline=False
     )
@@ -4912,6 +4902,7 @@ def create_bot_commands_embed():
         name="🔒 **PRIVATE CHAT MANAGEMENT**",
         value=(
             "`resend_delete_button #channel` - Fix delete button in channel\n"
+            "`reset_general_permissions` - Reset general-chat permissions\n"
         ),
         inline=False
     )
@@ -4921,6 +4912,8 @@ def create_bot_commands_embed():
         name="🎭 **ROLE MANAGEMENT**",
         value=(
             "`remove_role @user role_type` - Remove special role (instructor, master_family, both)\n"
+            "`apply_role_permissions` - Apply role permissions to all channels\n"
+            "`check_channel_permissions [channel]` - Check channel permissions\n"
         ),
         inline=False
     )
@@ -4966,7 +4959,6 @@ def create_bot_commands_embed():
     embed.add_field(
         name="🔄 **JSON SYNCHRONIZATION**",
         value=(
-            "`update_discord_roles` - Update Discord roles from JSON file (for ALL users)\n"
             "`update_json_roles` - Force immediate JSON sync\n"
             "`force_json_sync @user` - Force sync for specific user\n"
             "`json_task_status` - Show JSON task status\n"
@@ -4977,7 +4969,20 @@ def create_bot_commands_embed():
         inline=False
     )
     
-    # Section 9: TESTING & DEBUGGING
+    # Section 9: SYSTEM MONITORING
+    embed.add_field(
+        name="📈 **SYSTEM MONITORING**",
+        value=(
+            "`monitoring_status` - Show monitoring task status\n"
+            "`start_monitoring` - Start system monitoring\n"
+            "`stop_monitoring` - Stop system monitoring\n"
+            "`test_alert` - Test monitoring alert system\n"
+            "`update_monitoring_config setting value` - Update monitoring thresholds\n"
+        ),
+        inline=False
+    )
+    
+    # Section 10: TESTING & DEBUGGING
     embed.add_field(
         name="🐛 **TESTING & DEBUGGING**",
         value=(
@@ -4987,7 +4992,7 @@ def create_bot_commands_embed():
         inline=False
     )
     
-    # Section 10: PUBLIC COMMANDS
+    # Section 11: PUBLIC COMMANDS
     embed.add_field(
         name="🌐 **PUBLIC COMMANDS**",
         value=(
@@ -5042,12 +5047,18 @@ async def auto_setup_general_chat_button():
                     "## 🔐 **HOW IT WORKS**\n"
                     "1. Click the **📩 Request Private Chat** button below\n"
                     "2. A private chat will be created just for you\n"
-                    "3. Only you and our admin can see it\n"
+                    "3. Only you and our admin team can see it\n"
                     "4. We'll respond to you in that private chat\n\n"
-                    "## ⚠️ **IMPORTANT NOTES**\n"
-                    "• Do not type in this channel\n"
+                    "## ⚠️ **IMPORTANT RULES**\n"
+                    "• **DO NOT TYPE IN THIS CHANNEL**\n"
                     "• Use the button every time you need to talk to us\n"
-                    "• If you already have a private chat, clicking will just show you your existing chat\n"
+                    "• If you already have a private chat, clicking will show you your existing chat\n"
+                    "• Only admins can delete private chats\n\n"
+                    "## 🎯 **WHEN TO USE THIS**\n"
+                    "• Questions about classes\n"
+                    "• Schedule changes\n"
+                    "• Payment inquiries\n"
+                    "• Any private matter\n"
                 ),
                 color=discord.Color.blue()
             )
@@ -5428,54 +5439,899 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
     message = await ctx.send(embed=embed, view=view, ephemeral=True)
     view.message = message  # Store message reference for timeout handling
 
+class SystemMonitor:
+    """System monitoring class for Raspberry Pi with hourly log channel updates."""
+    
+    def __init__(self, bot):
+        self.bot = bot
+        self.cpu_temp_critical = 75.0  # °C - Critical threshold
+        self.memory_critical = 90.0    # % - Critical threshold
+        self.registry_critical = 10 * 1024 * 1024  # 10 MB - Critical threshold
+        self.check_interval = 300  # 5 minutes (in seconds)
+        self.last_alert_time = {}
+        self.alert_cooldown = 3600  # 1 hour cooldown between alerts for same metric
+        self.silent_mode = True  # Don't send normal status reports, only critical alerts
+        self.last_hourly_report = 0  # Track when we last sent hourly report
+    
+    async def get_cpu_temperature(self):
+        """Get CPU temperature for Raspberry Pi."""
+        try:
+            if platform.system() == "Linux" and os.path.exists("/sys/class/thermal/thermal_zone0/temp"):
+                with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+                    temp = float(f.read().strip()) / 1000.0
+                return temp
+            elif os.path.exists("/sys/class/thermal/thermal_zone1/temp"):
+                with open("/sys/class/thermal/thermal_zone1/temp", "r") as f:
+                    temp = float(f.read().strip()) / 1000.0
+                return temp
+            else:
+                # Fallback for non-RPi systems or if temp file doesn't exist
+                # Try using vcgencmd for Raspberry Pi
+                try:
+                    result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                           capture_output=True, text=True)
+                    if result.returncode == 0:
+                        temp_str = result.stdout.strip()
+                        temp = float(temp_str.split('=')[1].split("'")[0])
+                        return temp
+                except:
+                    pass
+                
+                # Try using psutil as last resort
+                if hasattr(psutil, "sensors_temperatures"):
+                    temps = psutil.sensors_temperatures()
+                    if 'cpu-thermal' in temps:
+                        return temps['cpu-thermal'][0].current
+                    elif 'coretemp' in temps:
+                        return temps['coretemp'][0].current
+                    
+                return None
+        except Exception as e:
+            print(f"❌ Error reading CPU temperature: {e}")
+            return None
+    
+    def get_memory_usage(self):
+        """Get memory usage percentage."""
+        try:
+            memory = psutil.virtual_memory()
+            return memory.percent
+        except Exception as e:
+            print(f"❌ Error reading memory usage: {e}")
+            return None
+    
+    def get_disk_usage(self):
+        """Get disk usage percentage."""
+        try:
+            disk = psutil.disk_usage('/')
+            return disk.percent
+        except Exception as e:
+            print(f"❌ Error reading disk usage: {e}")
+            return None
+    
+    def get_cpu_usage(self):
+        """Get CPU usage percentage."""
+        try:
+            return psutil.cpu_percent(interval=1)
+        except Exception as e:
+            print(f"❌ Error reading CPU usage: {e}")
+            return None
+    
+    def get_system_uptime(self):
+        """Get system uptime in seconds."""
+        try:
+            return time.time() - psutil.boot_time()
+        except Exception as e:
+            print(f"❌ Error reading system uptime: {e}")
+            return None
+    
+    def get_registry_file_size(self):
+        """Get the size of the registered_users.json file."""
+        try:
+            if os.path.exists(REGISTRY_FILE):
+                size = os.path.getsize(REGISTRY_FILE)
+                return size  # Size in bytes
+            return 0
+        except Exception as e:
+            print(f"❌ Error reading registry file size: {e}")
+            return None
+    
+    def get_bot_uptime(self, start_time):
+        """Get bot uptime in seconds."""
+        try:
+            return time.time() - start_time
+        except Exception as e:
+            print(f"❌ Error calculating bot uptime: {e}")
+            return None
+    
+    def format_uptime(self, seconds):
+        """Convert seconds to human readable uptime format."""
+        if seconds is None:
+            return "Unknown"
+        
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}d")
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0:
+            parts.append(f"{minutes}m")
+        if secs > 0 or not parts:
+            parts.append(f"{secs}s")
+        
+        return " ".join(parts)
+    
+    def format_file_size(self, size_bytes):
+        """Convert bytes to human readable format."""
+        if size_bytes is None:
+            return "Unknown"
+        
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+    
+    async def send_startup_system_report(self):
+        """Send comprehensive system status report to log channel on startup."""
+        try:
+            guild = self.bot.get_guild(GUILD_ID)
+            if not guild or not LOG_CHANNEL_ID:
+                print("⚠️ Cannot send startup report: Guild or log channel not found")
+                return
+            
+            log_channel = guild.get_channel(LOG_CHANNEL_ID)
+            if not log_channel:
+                print("⚠️ Cannot send startup report: Log channel not found")
+                return
+            
+            # Get all system metrics
+            cpu_temp = await self.get_cpu_temperature()
+            cpu_usage = self.get_cpu_usage()
+            memory_usage = self.get_memory_usage()
+            disk_usage = self.get_disk_usage()
+            system_uptime = self.get_system_uptime()
+            registry_size = self.get_registry_file_size()
+            
+            # Get bot-specific info
+            bot_start_time = getattr(self.bot, 'start_time', time.time())
+            bot_uptime = self.get_bot_uptime(bot_start_time)
+            
+            # Get system info
+            hostname = platform.node()
+            os_info = f"{platform.system()} {platform.release()}"
+            python_version = platform.python_version()
+            
+            # Create comprehensive startup embed
+            embed = discord.Embed(
+                title="🚀 Bot Startup - System Status Report",
+                description=f"**{self.bot.user.name}** is now online and monitoring system health.\n"
+                          f"**Host:** `{hostname}`\n"
+                          f"**Start Time:** <t:{int(time.time())}:F>",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # System Information
+            embed.add_field(
+                name="🖥️ System Information",
+                value=f"**OS:** {os_info}\n"
+                     f"**Python:** {python_version}\n"
+                     f"**System Uptime:** {self.format_uptime(system_uptime)}\n"
+                     f"**Bot Uptime:** {self.format_uptime(bot_uptime)}",
+                inline=False
+            )
+            
+            # Hardware Status
+            cpu_status = self.get_status_emoji(cpu_temp, self.cpu_temp_critical, "temp")
+            memory_status = self.get_status_emoji(memory_usage, self.memory_critical, "percent")
+            disk_status = self.get_status_emoji(disk_usage, 90, "percent")  # 90% disk usage threshold
+            
+            embed.add_field(
+                name="🔧 Hardware Status",
+                value=f"{cpu_status} **CPU:** {cpu_temp or 'N/A'}°C | {cpu_usage or 'N/A'}%\n"
+                     f"{memory_status} **Memory:** {memory_usage or 'N/A'}%\n"
+                     f"{disk_status} **Disk:** {disk_usage or 'N/A'}%",
+                inline=True
+            )
+            
+            # Application Status
+            registry_status = self.get_status_emoji(registry_size, self.registry_critical, "size")
+            total_users = len(registered_users)
+            
+            embed.add_field(
+                name="📊 Application Status",
+                value=f"{registry_status} **Registry:** {self.format_file_size(registry_size)}\n"
+                     f"👤 **Registered Users:** {total_users}\n"
+                     f"💬 **Active Chats:** {len(private_channels)}",
+                inline=True
+            )
+            
+            # Monitoring Configuration
+            embed.add_field(
+                name="⚙️ Monitoring Configuration",
+                value=f"**Check Interval:** {self.check_interval//60} minutes\n"
+                     f"**CPU Critical:** ≥{self.cpu_temp_critical}°C\n"
+                     f"**Memory Critical:** ≥{self.memory_critical}%\n"
+                     f"**Registry Critical:** ≥{self.format_file_size(self.registry_critical)}\n"
+                     f"**Alert Cooldown:** {self.alert_cooldown//3600} hours",
+                inline=False
+            )
+            
+            # Bot Services Status
+            json_task_status = "✅ Running" if update_json_with_roles.is_running() else "❌ Stopped"
+            monitoring_task_status = "✅ Running" if monitoring_task.is_running() else "❌ Stopped"
+            
+            embed.add_field(
+                name="🔄 Background Services",
+                value=f"**JSON Sync Task:** {json_task_status}\n"
+                     f"**System Monitoring:** {monitoring_task_status}\n"
+                     f"**Hourly Reports:** ✅ Enabled",
+                inline=True
+            )
+            
+            embed.set_footer(text="System monitoring active. Hourly reports will be sent to this channel.")
+            
+            await log_channel.send(embed=embed)
+            print(f"📊 Sent startup system report to log channel")
+            
+            # Store bot start time for uptime calculations
+            self.bot.start_time = time.time()
+            
+        except Exception as e:
+            print(f"❌ Error sending startup system report: {e}")
+    
+    async def send_hourly_status_report(self):
+        """Send hourly system status report to log channel."""
+        try:
+            current_time = time.time()
+            
+            # Check if at least 1 hour has passed since last report
+            if current_time - self.last_hourly_report < 3600:
+                return
+            
+            guild = self.bot.get_guild(GUILD_ID)
+            if not guild or not LOG_CHANNEL_ID:
+                return
+            
+            log_channel = guild.get_channel(LOG_CHANNEL_ID)
+            if not log_channel:
+                return
+            
+            # Get all system metrics
+            cpu_temp = await self.get_cpu_temperature()
+            cpu_usage = self.get_cpu_usage()
+            memory_usage = self.get_memory_usage()
+            disk_usage = self.get_disk_usage()
+            registry_size = self.get_registry_file_size()
+            
+            # Get uptime info
+            system_uptime = self.get_system_uptime()
+            bot_uptime = self.get_bot_uptime(getattr(self.bot, 'start_time', current_time))
+            
+            # Create hourly status embed
+            embed = discord.Embed(
+                title="⏰ Hourly System Status",
+                description=f"**Time:** <t:{int(current_time)}:F>\n"
+                          f"**Bot:** {self.bot.user.name}",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # System Health
+            cpu_status = self.get_status_emoji(cpu_temp, self.cpu_temp_critical, "temp")
+            memory_status = self.get_status_emoji(memory_usage, self.memory_critical, "percent")
+            disk_status = self.get_status_emoji(disk_usage, 90, "percent")
+            registry_status = self.get_status_emoji(registry_size, self.registry_critical, "size")
+            
+            embed.add_field(
+                name="📈 System Health",
+                value=f"{cpu_status} **CPU:** {cpu_temp or 'N/A'}°C | {cpu_usage or 'N/A'}%\n"
+                     f"{memory_status} **Memory:** {memory_usage or 'N/A'}%\n"
+                     f"{disk_status} **Disk:** {disk_usage or 'N/A'}%\n"
+                     f"{registry_status} **Registry:** {self.format_file_size(registry_size)}",
+                inline=True
+            )
+            
+            # Uptime Information
+            embed.add_field(
+                name="⏱️ Uptime",
+                value=f"**System:** {self.format_uptime(system_uptime)}\n"
+                     f"**Bot:** {self.format_uptime(bot_uptime)}\n"
+                     f"**Next Report:** <t:{int(current_time) + 3600}:R>",
+                inline=True
+            )
+            
+            # Bot Statistics
+            total_users = len(registered_users)
+            active_chats = len(private_channels)
+            
+            embed.add_field(
+                name="📊 Bot Statistics",
+                value=f"👤 **Users:** {total_users}\n"
+                     f"💬 **Active Chats:** {active_chats}\n"
+                     f"🔄 **JSON Task:** {'✅' if update_json_with_roles.is_running() else '❌'}",
+                inline=True
+            )
+            
+            # Check for any critical conditions
+            critical_alerts = []
+            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+                critical_alerts.append(f"🔥 CPU Temp: {cpu_temp}°C")
+            if memory_usage and memory_usage >= self.memory_critical:
+                critical_alerts.append(f"💾 Memory: {memory_usage}%")
+            if registry_size and registry_size >= self.registry_critical:
+                critical_alerts.append(f"📁 Registry: {self.format_file_size(registry_size)}")
+            
+            if critical_alerts:
+                embed.add_field(
+                    name="🚨 Critical Alerts Active",
+                    value="\n".join([f"• {alert}" for alert in critical_alerts]),
+                    inline=False
+                )
+                embed.color = discord.Color.red()
+            
+            embed.set_footer(text="Hourly system status report")
+            
+            await log_channel.send(embed=embed)
+            self.last_hourly_report = current_time
+            
+            print(f"⏰ Sent hourly system status report to log channel")
+            
+        except Exception as e:
+            print(f"❌ Error sending hourly status report: {e}")
+    
+    def get_status_emoji(self, value, threshold, value_type):
+        """Get appropriate emoji for status based on value and threshold."""
+        if value is None:
+            return "❓"
+        
+        if value_type == "temp":
+            if value >= threshold:
+                return "🔥"  # Critical
+            elif value >= threshold * 0.8:  # 80% of threshold
+                return "⚠️"  # Warning
+            else:
+                return "✅"  # Normal
+        
+        elif value_type == "percent":
+            if value >= threshold:
+                return "🔴"  # Critical
+            elif value >= threshold * 0.8:  # 80% of threshold
+                return "🟡"  # Warning
+            else:
+                return "🟢"  # Normal
+        
+        elif value_type == "size":
+            if value >= threshold:
+                return "📈"  # Critical
+            elif value >= threshold * 0.8:  # 80% of threshold
+                return "📊"  # Warning
+            else:
+                return "📉"  # Normal
+        
+        return "❓"
+    
+    async def send_monitoring_alert(self, metric, value, threshold):
+        """Send alert to admin via Discord DM."""
+        try:
+            admin_user = self.bot.get_user(ADMIN_USER_ID)
+            if not admin_user:
+                print(f"❌ Admin user not found: {ADMIN_USER_ID}")
+                return
+            
+            # Check cooldown
+            current_time = time.time()
+            if metric in self.last_alert_time:
+                time_since_last_alert = current_time - self.last_alert_time[metric]
+                if time_since_last_alert < self.alert_cooldown:
+                    print(f"⚠️ Alert for {metric} is in cooldown ({int(self.alert_cooldown - time_since_last_alert)}s remaining)")
+                    return
+            
+            # Update last alert time
+            self.last_alert_time[metric] = current_time
+            
+            # Create alert embed
+            if metric == "cpu_temp":
+                title = "🔥 CPU Temperature Critical"
+                description = f"CPU temperature is at **{value}°C** which exceeds the critical threshold of **{threshold}°C**!"
+                color = discord.Color.red()
+                icon = "🔥"
+            elif metric == "memory":
+                title = "💾 Memory Usage Critical"
+                description = f"Memory usage is at **{value}%** which exceeds the critical threshold of **{threshold}%**!"
+                color = discord.Color.orange()
+                icon = "💾"
+            elif metric == "registry":
+                title = "📁 Registry File Size Critical"
+                description = f"Registry file size is **{self.format_file_size(value)}** which exceeds the critical threshold of **{self.format_file_size(threshold)}**!"
+                color = discord.Color.purple()
+                icon = "📁"
+            else:
+                return
+            
+            embed = discord.Embed(
+                title=f"{icon} {title}",
+                description=description,
+                color=color,
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Add system information
+            embed.add_field(name="🖥️ Host", value=platform.node(), inline=True)
+            embed.add_field(name="📅 Time", value=f"<t:{int(current_time)}:T>", inline=True)
+            embed.add_field(name="🚨 Metric", value=metric.replace("_", " ").title(), inline=True)
+            
+            # Add recommendations
+            if metric == "cpu_temp":
+                embed.add_field(
+                    name="💡 Recommendations",
+                    value="• Check cooling system\n• Reduce CPU load\n• Ensure proper ventilation",
+                    inline=False
+                )
+            elif metric == "memory":
+                embed.add_field(
+                    name="💡 Recommendations",
+                    value="• Close unnecessary applications\n• Check for memory leaks\n• Consider adding more RAM",
+                    inline=False
+                )
+            elif metric == "registry":
+                embed.add_field(
+                    name="💡 Recommendations",
+                    value="• Clean up old user data\n• Backup and archive\n• Consider database migration",
+                    inline=False
+                )
+            
+            embed.set_footer(text="System Monitoring Alert")
+            
+            # Send DM to admin
+            try:
+                await admin_user.send(embed=embed)
+                print(f"⚠️ Sent {metric} alert to admin: {value} exceeds {threshold}")
+            except discord.Forbidden:
+                print(f"❌ Cannot send DM to admin. Admin may have DMs disabled.")
+                
+                # Try to log to log channel as fallback
+                error_embed = discord.Embed(
+                    title=f"⚠️ System Alert - {title}",
+                    description=f"**Could not send DM to admin.**\n\n{description}",
+                    color=color,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                await send_to_log_channel(self.bot.get_guild(GUILD_ID), "", error_embed)
+                
+        except Exception as e:
+            print(f"❌ Error sending monitoring alert: {e}")
+    
+    async def send_monitoring_status(self, channel):
+        """Send current system status to a channel."""
+        try:
+            # Gather all metrics
+            cpu_temp = await self.get_cpu_temperature()
+            memory_usage = self.get_memory_usage()
+            registry_size = self.get_registry_file_size()
+            
+            # Get additional system info
+            cpu_percent = psutil.cpu_percent(interval=1)
+            disk_usage = psutil.disk_usage('/')
+            uptime_seconds = time.time() - psutil.boot_time()
+            
+            # Convert uptime to readable format
+            uptime_days = int(uptime_seconds // 86400)
+            uptime_hours = int((uptime_seconds % 86400) // 3600)
+            uptime_minutes = int((uptime_seconds % 3600) // 60)
+            
+            # Create status embed
+            embed = discord.Embed(
+                title="📊 System Monitoring Status",
+                description=f"Last updated: <t:{int(time.time())}:R>",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # CPU Information
+            cpu_status = "✅ Normal"
+            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+                cpu_status = f"🔥 **CRITICAL** ({cpu_temp}°C)"
+            elif cpu_temp and cpu_temp >= self.cpu_temp_critical * 0.8:  # 80% of critical
+                cpu_status = f"⚠️ Warning ({cpu_temp}°C)"
+            
+            cpu_text = f"**Temperature:** {cpu_temp}°C\n"
+            cpu_text += f"**Usage:** {cpu_percent}%\n"
+            cpu_text += f"**Status:** {cpu_status}"
+            embed.add_field(name="🖥️ CPU", value=cpu_text, inline=True)
+            
+            # Memory Information
+            memory_status = "✅ Normal"
+            if memory_usage and memory_usage >= self.memory_critical:
+                memory_status = f"💾 **CRITICAL** ({memory_usage}%)"
+            elif memory_usage and memory_usage >= self.memory_critical * 0.8:  # 80% of critical
+                memory_status = f"⚠️ Warning ({memory_usage}%)"
+            
+            memory = psutil.virtual_memory()
+            memory_text = f"**Usage:** {memory_usage}%\n"
+            memory_text += f"**Available:** {self.format_file_size(memory.available)}\n"
+            memory_text += f"**Status:** {memory_status}"
+            embed.add_field(name="🧠 Memory", value=memory_text, inline=True)
+            
+            # Disk Information
+            disk_text = f"**Total:** {self.format_file_size(disk_usage.total)}\n"
+            disk_text += f"**Used:** {self.format_file_size(disk_usage.used)}\n"
+            disk_text += f"**Free:** {self.format_file_size(disk_usage.free)}\n"
+            disk_text += f"**Usage:** {disk_usage.percent}%"
+            embed.add_field(name="💿 Disk", value=disk_text, inline=True)
+            
+            # Registry Information
+            registry_status = "✅ Normal"
+            if registry_size and registry_size >= self.registry_critical:
+                registry_status = f"📁 **CRITICAL** ({self.format_file_size(registry_size)})"
+            elif registry_size and registry_size >= self.registry_critical * 0.8:  # 80% of critical
+                registry_status = f"⚠️ Warning ({self.format_file_size(registry_size)})"
+            
+            registry_text = f"**Size:** {self.format_file_size(registry_size)}\n"
+            registry_text += f"**Users:** {len(registered_users)}\n"
+            registry_text += f"**Status:** {registry_status}"
+            embed.add_field(name="📝 Registry", value=registry_text, inline=True)
+            
+            # System Information
+            system_text = f"**Host:** {platform.node()}\n"
+            system_text += f"**OS:** {platform.system()} {platform.release()}\n"
+            system_text += f"**Uptime:** {uptime_days}d {uptime_hours}h {uptime_minutes}m\n"
+            system_text += f"**Python:** {platform.python_version()}"
+            embed.add_field(name="⚙️ System", value=system_text, inline=True)
+            
+            # Alert Status
+            alerts_active = []
+            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+                alerts_active.append("CPU Temperature")
+            if memory_usage and memory_usage >= self.memory_critical:
+                alerts_active.append("Memory Usage")
+            if registry_size and registry_size >= self.registry_critical:
+                alerts_active.append("Registry Size")
+            
+            if alerts_active:
+                alert_text = "🔴 **ACTIVE CRITICAL ALERTS:**\n"
+                alert_text += "\n".join([f"• {alert}" for alert in alerts_active])
+                alert_text += f"\n\n⏳ **Alert Cooldown:** {self.alert_cooldown//3600}h"
+                embed.add_field(name="🚨 Alert Status", value=alert_text, inline=False)
+            else:
+                embed.add_field(name="✅ Alert Status", value="No active critical alerts", inline=False)
+            
+            # Footer with thresholds
+            footer_text = f"Thresholds: CPU ≥{self.cpu_temp_critical}°C | Mem ≥{self.memory_critical}% | Registry ≥{self.format_file_size(self.registry_critical)}"
+            embed.set_footer(text=footer_text)
+            
+            await channel.send(embed=embed)
+            
+        except Exception as e:
+            print(f"❌ Error sending monitoring status: {e}")
+            error_embed = discord.Embed(
+                title="❌ Monitoring Error",
+                description=f"Failed to get system status: {str(e)}",
+                color=discord.Color.red()
+            )
+            await channel.send(embed=error_embed)
+    
+    async def check_system_metrics(self):
+        """Check all system metrics and send alerts only if critical."""
+        try:
+            # Check CPU temperature
+            cpu_temp = await self.get_cpu_temperature()
+            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+                await self.send_monitoring_alert("cpu_temp", cpu_temp, self.cpu_temp_critical)
+            
+            # Check memory usage
+            memory_usage = self.get_memory_usage()
+            if memory_usage and memory_usage >= self.memory_critical:
+                await self.send_monitoring_alert("memory", memory_usage, self.memory_critical)
+            
+            # Check registry file size
+            registry_size = self.get_registry_file_size()
+            if registry_size and registry_size >= self.registry_critical:
+                await self.send_monitoring_alert("registry", registry_size, self.registry_critical)
+            
+            # Check for hourly report
+            await self.send_hourly_status_report()
+            
+            # SILENT mode: No console output for normal status
+            # Just quietly check without logging
+            
+        except Exception as e:
+            print(f"❌ Error in system metrics check: {e}")
+
+# Create global instance
+system_monitor = None
+
 # =============================================================================
-# UPDATE ON_READY TO AUTO-PIN
+# MONITORING TASK
+# =============================================================================
+@tasks.loop(seconds=300)  # Run every 5 minutes
+async def monitoring_task():
+    """Background task to check system metrics periodically."""
+    global system_monitor
+    if system_monitor:
+        await system_monitor.check_system_metrics()
+
+@monitoring_task.before_loop
+async def before_monitoring_task():
+    """Wait for bot to be ready before starting monitoring."""
+    await bot.wait_until_ready()
+    print("📊 System monitoring task is waiting to start...")
+    print("📊 System monitoring task is waiting to start...")
+
+# =============================================================================
+# MONITORING COMMANDS
+# =============================================================================
+
+@bot_command.command(name="system_status")
+@bot_channel_only()
+async def chat_system_status(ctx):
+    """Display current system status and monitoring information."""
+    global system_monitor
+    if not system_monitor:
+        await ctx.send("❌ System monitor not initialized.", ephemeral=True)
+        return
+    
+    await system_monitor.send_monitoring_status(ctx.channel)
+
+@bot_command.command(name="monitoring_config")
+@bot_channel_only()
+async def chat_monitoring_config(ctx):
+    """Display current monitoring configuration."""
+    global system_monitor
+    if not system_monitor:
+        await ctx.send("❌ System monitor not initialized.", ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="⚙️ Monitoring Configuration",
+        description="Current system monitoring settings:",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(
+        name="📊 Check Interval",
+        value=f"{system_monitor.check_interval} seconds ({system_monitor.check_interval//60} minutes)",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="🔥 CPU Temp Critical",
+        value=f"{system_monitor.cpu_temp_critical}°C",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="💾 Memory Critical",
+        value=f"{system_monitor.memory_critical}%",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📁 Registry Critical",
+        value=f"{system_monitor.format_file_size(system_monitor.registry_critical)}",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="⏳ Alert Cooldown",
+        value=f"{system_monitor.alert_cooldown} seconds ({system_monitor.alert_cooldown//3600} hours)",
+        inline=True
+    )
+    
+    # Get current metrics
+    cpu_temp = await system_monitor.get_cpu_temperature()
+    memory_usage = system_monitor.get_memory_usage()
+    registry_size = system_monitor.get_registry_file_size()
+    
+    embed.add_field(
+        name="📈 Current Metrics",
+        value=f"• CPU Temp: {cpu_temp}°C\n• Memory: {memory_usage}%\n• Registry: {system_monitor.format_file_size(registry_size)}",
+        inline=False
+    )
+    
+    embed.set_footer(text="Use !bot_command update_monitoring_config to change settings")
+    await ctx.send(embed=embed, ephemeral=True)
+
+@bot_command.command(name="update_monitoring_config")
+@bot_channel_only()
+async def chat_update_monitoring_config(ctx, setting: str, value: float):
+    """
+    Update monitoring configuration.
+    
+    Settings:
+    - cpu_temp: CPU temperature critical threshold (°C)
+    - memory: Memory usage critical threshold (%)
+    - registry: Registry file size critical threshold (MB)
+    - interval: Check interval (minutes)
+    - cooldown: Alert cooldown (hours)
+    """
+    global system_monitor
+    if not system_monitor:
+        await ctx.send("❌ System monitor not initialized.", ephemeral=True)
+        return
+    
+    setting = setting.lower()
+    
+    try:
+        if setting == "cpu_temp":
+            old_value = system_monitor.cpu_temp_critical
+            system_monitor.cpu_temp_critical = float(value)
+            await ctx.send(f"✅ CPU temperature critical threshold updated: {old_value}°C → {value}°C", ephemeral=True)
+            
+        elif setting == "memory":
+            old_value = system_monitor.memory_critical
+            system_monitor.memory_critical = float(value)
+            await ctx.send(f"✅ Memory usage critical threshold updated: {old_value}% → {value}%", ephemeral=True)
+            
+        elif setting == "registry":
+            old_value = system_monitor.registry_critical / (1024 * 1024)  # Convert back to MB for display
+            system_monitor.registry_critical = float(value) * 1024 * 1024  # Convert MB to bytes
+            await ctx.send(f"✅ Registry file size critical threshold updated: {old_value}MB → {value}MB", ephemeral=True)
+            
+        elif setting == "interval":
+            old_value = system_monitor.check_interval // 60  # Convert to minutes for display
+            system_monitor.check_interval = int(value) * 60  # Convert minutes to seconds
+            await ctx.send(f"✅ Check interval updated: {old_value} minutes → {value} minutes", ephemeral=True)
+            
+        elif setting == "cooldown":
+            old_value = system_monitor.alert_cooldown // 3600  # Convert to hours for display
+            system_monitor.alert_cooldown = int(value) * 3600  # Convert hours to seconds
+            await ctx.send(f"✅ Alert cooldown updated: {old_value} hours → {value} hours", ephemeral=True)
+            
+        else:
+            await ctx.send("❌ Invalid setting. Available: cpu_temp, memory, registry, interval, cooldown", ephemeral=True)
+            
+    except ValueError:
+        await ctx.send("❌ Invalid value. Please provide a number.", ephemeral=True)
+
+@bot_command.command(name="test_alert")
+@bot_channel_only()
+async def chat_test_alert(ctx):
+    """Test the monitoring alert system."""
+    global system_monitor
+    if not system_monitor:
+        await ctx.send("❌ System monitor not initialized.", ephemeral=True)
+        return
+    
+    # Send a test alert
+    await system_monitor.send_monitoring_alert("cpu_temp", 85.0, 75.0)
+    await ctx.send("✅ Test alert sent to admin. Check your DMs!", ephemeral=True)
+
+@bot_command.command(name="monitoring_status")
+@bot_channel_only()
+async def chat_monitoring_task_status(ctx):
+    """Show the status of the monitoring task."""
+    task = monitoring_task
+    
+    embed = discord.Embed(
+        title="📊 Monitoring Task Status",
+        color=discord.Color.blue()
+    )
+    
+    if task.is_running():
+        embed.description = "✅ **Monitoring task is running**"
+        embed.add_field(
+            name="Check Interval",
+            value=f"Every {system_monitor.check_interval} seconds ({system_monitor.check_interval//60} minutes)",
+            inline=True
+        )
+        embed.add_field(
+            name="Last Check",
+            value=f"Running continuously",
+            inline=True
+        )
+    else:
+        embed.description = "❌ **Monitoring task is not running**"
+        embed.add_field(
+            name="Status",
+            value="Use `!bot_command start_monitoring` to start the task",
+            inline=False
+        )
+    
+    # Add cooldown status
+    if system_monitor.last_alert_time:
+        cooldown_info = []
+        for metric, last_time in system_monitor.last_alert_time.items():
+            time_since = time.time() - last_time
+            if time_since < system_monitor.alert_cooldown:
+                remaining = system_monitor.alert_cooldown - time_since
+                cooldown_info.append(f"• {metric}: {int(remaining)}s remaining")
+        
+        if cooldown_info:
+            embed.add_field(
+                name="⏳ Alert Cooldowns",
+                value="\n".join(cooldown_info),
+                inline=False
+            )
+    
+    await ctx.send(embed=embed)
+
+@bot_command.command(name="start_monitoring")
+@bot_channel_only()
+async def chat_start_monitoring(ctx):
+    """Manually start the monitoring task."""
+    task = monitoring_task
+    
+    if task.is_running():
+        await ctx.send("✅ Monitoring task is already running.", ephemeral=True)
+        return
+    
+    try:
+        task.start()
+        await ctx.send("✅ Started system monitoring task!")
+        
+        # Log to log channel
+        embed = discord.Embed(
+            title="▶️ System Monitoring Started",
+            description=f"System monitoring task has been started.\n"
+                       f"**By:** {ctx.author.mention}\n"
+                       f"**Interval:** Every {system_monitor.check_interval//60} minutes\n"
+                       f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(ctx.guild, "", embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Failed to start monitoring: {str(e)}", ephemeral=True)
+
+@bot_command.command(name="stop_monitoring")
+@bot_channel_only()
+async def chat_stop_monitoring(ctx):
+    """Stop the monitoring task."""
+    task = monitoring_task
+    
+    if not task.is_running():
+        await ctx.send("❌ Monitoring task is not running.", ephemeral=True)
+        return
+    
+    try:
+        task.cancel()
+        await ctx.send("✅ Stopped system monitoring task.")
+        
+        # Log to log channel
+        embed = discord.Embed(
+            title="⏹️ System Monitoring Stopped",
+            description=f"System monitoring task has been stopped.\n"
+                       f"**By:** {ctx.author.mention}\n"
+                       f"**Time:** <t:{int(time.time())}:R>",
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(ctx.guild, "", embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Failed to stop monitoring: {str(e)}", ephemeral=True)
+
+# =============================================================================
+# UPDATE ON_READY TO SEND STARTUP SYSTEM REPORT
 # =============================================================================
 @bot.event
 async def on_ready():
     """Bot startup initialization and system verification."""
+    global system_monitor
+    
     print(f'✅ {bot.user} is online!')
     print(f'🆔 Bot ID: {bot.user.id}')
     print(f'👥 Connected to {len(bot.guilds)} server(s)')
     
-    # AUTO-LOG ADMIN INFO ON SERVER START
+    # Initialize system monitor (but don't send reports)
+    system_monitor = SystemMonitor(bot)
+    print(f'📊 System monitor initialized with check interval: {system_monitor.check_interval}s')
+    
+    # Send startup system report to log channel
+    await system_monitor.send_startup_system_report()
+    
+    # Minimal startup logging
     guild = bot.get_guild(GUILD_ID)
     if guild:
-        admin_member = guild.get_member(ADMIN_USER_ID)
-        if admin_member:
-            admin_id_str = str(ADMIN_USER_ID)
-            
-            # Check if admin already exists in registered_users
-            if admin_id_str not in registered_users:
-                # Create admin entry
-                registered_users[admin_id_str] = {
-                    'child_name': 'Admin User',
-                    'role': 'Admin',
-                    'role_display': '👑 Server Admin',
-                    'nickname': admin_member.display_name,
-                    'gender': 'admin',
-                    'programs': [],
-                    'registered_at': discord.utils.utcnow().isoformat(),
-                    'has_active_private_chat': False,
-                    'private_chat_channel_id': None,
-                    'roles': ['Admin'],
-                    'admin_user': True,
-                    'auto_added': True
-                }
-                save_registered_users(registered_users)
-                print(f"✅ Auto-logged admin user: {admin_member.name}")
-            else:
-                # Ensure admin has Admin role in the array
-                if 'Admin' not in registered_users[admin_id_str].get('roles', []):
-                    registered_users[admin_id_str]['roles'] = registered_users[admin_id_str].get('roles', []) + ['Admin']
-                    registered_users[admin_id_str]['admin_user'] = True
-                    save_registered_users(registered_users)
-                    print(f"✅ Updated admin roles for: {admin_member.name}")
-    
-    migrate_existing_users()
-
-    if guild:
-        print(f'🏠 Server: {guild.name} (ID: {guild.id})')
+        # Just log to console
+        print(f"🏠 Server: {guild.name} (ID: {guild.id})")
         
         # Register persistent views
         bot.add_view(RulesRegistrationView())
@@ -5486,9 +6342,33 @@ async def on_ready():
         
         # AUTO-SETUP CHANNELS ON STARTUP
         print("\n🔄 Auto-setting up channels on startup...")
-        await auto_setup_welcome_channel()  # NEW: Setup welcome channel (rules message)
+        await auto_setup_welcome_channel()  # Setup welcome channel (rules message)
         await auto_setup_command_chat()     # Setup bot command channel
         await auto_setup_general_chat_button()  # Setup general-chat button
+        
+        # ========================================================
+        # START ALL BACKGROUND TASKS ON STARTUP
+        # ========================================================
+        
+        # Start JSON role synchronization task (24-hour intervals)
+        if not update_json_with_roles.is_running():
+            try:
+                update_json_with_roles.start()
+                print('✅ 24-hour JSON role synchronization task started')
+            except Exception as e:
+                print(f'⚠️ Failed to start JSON sync task: {e}')
+        
+        # Start system monitoring task (5-minute intervals)
+        if not monitoring_task.is_running():
+            try:
+                monitoring_task.start()
+                print('✅ System monitoring task started (every 5 minutes)')
+            except Exception as e:
+                print(f'⚠️ Failed to start monitoring task: {e}')
+        
+        # ========================================================
+        # POST-STARTUP CHECKS
+        # ========================================================
         
         # Verify monitored channels
         print("\n📢 MONITORED CHANNELS (messages will create private chats):")
@@ -5514,7 +6394,7 @@ async def on_ready():
         else:
             print(f'⚠️ Master Lee\'s Family role not found! ID: {MASTER_LEE_FAMILY_ROLE_ID}')
 
-       # Verify Student role
+        # Verify Student role
         student_role = guild.get_role(STUDENT_ROLE_ID)
         if student_role:
             print(f'🎓 Student Role: {student_role.name} (ID: {student_role.id})')
@@ -5600,6 +6480,43 @@ async def on_ready():
         # Validate green check mark consistency
         print("\n🔍 Checking registration status...")
         await verify_green_check_consistency(guild, rules_channel)
+        
+        # AUTO-LOG ADMIN INFO ON SERVER START
+        admin_member = guild.get_member(ADMIN_USER_ID)
+        if admin_member:
+            admin_id_str = str(ADMIN_USER_ID)
+            
+            # Check if admin already exists in registered_users
+            if admin_id_str not in registered_users:
+                # Create admin entry
+                registered_users[admin_id_str] = {
+                    'child_name': 'Admin User',
+                    'role': 'Admin',
+                    'role_display': '👑 Server Admin',
+                    'nickname': admin_member.display_name,
+                    'gender': 'admin',
+                    'programs': [],
+                    'registered_at': discord.utils.utcnow().isoformat(),
+                    'has_active_private_chat': False,
+                    'private_chat_channel_id': None,
+                    'roles': ['Admin'],
+                    'admin_user': True,
+                    'auto_added': True
+                }
+                save_registered_users(registered_users)
+                print(f"✅ Auto-logged admin user: {admin_member.name}")
+            else:
+                # Ensure admin has Admin role in the array
+                if 'Admin' not in registered_users[admin_id_str].get('roles', []):
+                    registered_users[admin_id_str]['roles'] = registered_users[admin_id_str].get('roles', []) + ['Admin']
+                    registered_users[admin_id_str]['admin_user'] = True
+                    save_registered_users(registered_users)
+                    print(f"✅ Updated admin roles for: {admin_member.name}")
+    
+    migrate_existing_users()
+    
+    print("\n🚀 Bot startup complete! All systems operational.")
+    print("="*50)
 
 # ============================================================================
 # ROLE MANAGEMENT COMMANDS
