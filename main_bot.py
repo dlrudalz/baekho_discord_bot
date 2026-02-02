@@ -5439,20 +5439,470 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
     message = await ctx.send(embed=embed, view=view, ephemeral=True)
     view.message = message  # Store message reference for timeout handling
 
+# =============================================================================
+# SYSTEM MONITOR CLASS (MODIFIED)
+# =============================================================================
+
 class SystemMonitor:
-    """System monitoring class for Raspberry Pi with hourly log channel updates."""
+    """System monitoring class for Raspberry Pi with enhanced hourly status checks."""
     
     def __init__(self, bot):
         self.bot = bot
+        # Critical thresholds
         self.cpu_temp_critical = 75.0  # °C - Critical threshold
-        self.memory_critical = 90.0    # % - Critical threshold
+        self.memory_critical = 90.0    # % - Critical threshold  
+        self.disk_critical = 90.0      # % - Critical threshold
         self.registry_critical = 10 * 1024 * 1024  # 10 MB - Critical threshold
+        
+        # Warning thresholds (for hourly reports)
+        self.cpu_temp_warning = 65.0   # °C - Warning threshold
+        self.memory_warning = 80.0     # % - Warning threshold
+        self.disk_warning = 80.0       # % - Warning threshold
+        self.registry_warning = 5 * 1024 * 1024  # 5 MB - Warning threshold
+        
+        # Monitoring settings
         self.check_interval = 300  # 5 minutes (in seconds)
         self.last_alert_time = {}
         self.alert_cooldown = 3600  # 1 hour cooldown between alerts for same metric
-        self.silent_mode = True  # Don't send normal status reports, only critical alerts
         self.last_hourly_report = 0  # Track when we last sent hourly report
+        self.report_count = 0  # Track number of reports sent
+        
+        # Performance tracking
+        self.performance_history = {
+            'cpu_temps': [],
+            'memory_usage': [],
+            'disk_usage': [],
+            'registry_sizes': []
+        }
+        self.MAX_HISTORY = 144  # Store 24 hours of data (24 * 6 checks/hour)
+
+    def get_status_emoji(self, value, warning_threshold, critical_threshold, value_type="percent"):
+        """Get appropriate emoji for status based on value and thresholds."""
+        if value is None:
+            return "❓"
+        
+        if value_type == "temp":
+            if value >= critical_threshold:
+                return "🔥"  # Critical
+            elif value >= warning_threshold:
+                return "⚠️"  # Warning
+            else:
+                return "✅"  # Normal
+        
+        elif value_type == "percent":
+            if value >= critical_threshold:
+                return "🔴"  # Critical
+            elif value >= warning_threshold:
+                return "🟡"  # Warning
+            else:
+                return "🟢"  # Normal
+        
+        elif value_type == "size":
+            if value >= critical_threshold:
+                return "📈"  # Critical
+            elif value >= warning_threshold:
+                return "📊"  # Warning
+            else:
+                return "📉"  # Normal
+        
+        return "❓"
     
+    def format_uptime(self, seconds):
+        """Convert seconds to human readable uptime format."""
+        if seconds is None:
+            return "Unknown"
+        
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}d")
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0:
+            parts.append(f"{minutes}m")
+        if secs > 0 or not parts:
+            parts.append(f"{secs}s")
+        
+        return " ".join(parts)
+    
+    def format_file_size(self, size_bytes):
+        """Convert bytes to human readable format."""
+        if size_bytes is None:
+            return "Unknown"
+        
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+    
+    async def send_enhanced_hourly_report(self):
+        """Send enhanced hourly system status report to log channel."""
+        try:
+            current_time = time.time()
+            
+            # Check if at least 1 hour has passed since last report
+            if current_time - self.last_hourly_report < 3600:
+                return
+            
+            guild = self.bot.get_guild(GUILD_ID)
+            if not guild or not LOG_CHANNEL_ID:
+                return
+            
+            log_channel = guild.get_channel(LOG_CHANNEL_ID)
+            if not log_channel:
+                return
+            
+            # Get all system metrics
+            cpu_temp = await self.get_cpu_temperature()
+            cpu_usage = self.get_cpu_usage()
+            memory_usage = self.get_memory_usage()
+            disk_usage = self.get_disk_usage()
+            registry_size = self.get_registry_file_size()
+            
+            # Get uptime info
+            system_uptime = self.get_system_uptime()
+            bot_uptime = self.get_bot_uptime(getattr(self.bot, 'start_time', current_time))
+            
+            # Get network info
+            network_info = self.get_network_info()
+            
+            # Get process count
+            process_count = self.get_process_count()
+            
+            # Get bot statistics
+            total_users = len(registered_users)
+            active_chats = len(private_channels)
+            registered_today = self.get_registrations_today()
+            
+            # Update performance history
+            self.update_performance_history(cpu_temp, memory_usage, disk_usage, registry_size)
+            
+            # Determine overall system health
+            overall_status = self.get_overall_system_status(
+                cpu_temp, memory_usage, disk_usage, registry_size
+            )
+            
+            # Create enhanced hourly status embed
+            embed = discord.Embed(
+                title="📊 ENHANCED HOURLY SYSTEM STATUS",
+                description=f"**Time:** <t:{int(current_time)}:F>\n"
+                          f"**Bot:** {self.bot.user.name}\n"
+                          f"**Overall Status:** {overall_status}",
+                color=self.get_status_color(overall_status),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Section 1: SYSTEM HEALTH (Critical Metrics)
+            embed.add_field(
+                name="🩺 SYSTEM HEALTH",
+                value=self.format_health_section(cpu_temp, cpu_usage, memory_usage, disk_usage),
+                inline=False
+            )
+            
+            # Section 2: BOT STATISTICS
+            embed.add_field(
+                name="🤖 BOT STATISTICS",
+                value=self.format_bot_stats(total_users, active_chats, registered_today),
+                inline=True
+            )
+            
+            # Section 3: STORAGE & DATA
+            embed.add_field(
+                name="💾 STORAGE & DATA",
+                value=self.format_storage_section(disk_usage, registry_size, total_users),
+                inline=True
+            )
+            
+            # Section 4: UPTIME & PERFORMANCE
+            embed.add_field(
+                name="⏱️ UPTIME & PERFORMANCE",
+                value=self.format_uptime_section(system_uptime, bot_uptime, process_count, network_info),
+                inline=False
+            )
+            
+            # Section 5: BACKGROUND TASKS
+            embed.add_field(
+                name="🔄 BACKGROUND TASKS",
+                value=self.format_task_section(),
+                inline=True
+            )
+            
+            # Section 6: PERFORMANCE TRENDS
+            if len(self.performance_history['cpu_temps']) > 1:
+                embed.add_field(
+                    name="📈 PERFORMANCE TRENDS (24h)",
+                    value=self.format_trends_section(),
+                    inline=True
+                )
+            
+            # Section 7: ALERTS & NOTIFICATIONS
+            active_alerts = self.check_active_alerts(cpu_temp, memory_usage, disk_usage, registry_size)
+            if active_alerts:
+                embed.add_field(
+                    name="🚨 ACTIVE ALERTS",
+                    value="\n".join([f"• {alert}" for alert in active_alerts]),
+                    inline=False
+                )
+                embed.color = discord.Color.red()
+            
+            # Footer with thresholds
+            footer_text = (
+                f"Report #{self.report_count} | "
+                f"CPU: ≥{self.cpu_temp_critical}°C | "
+                f"Mem: ≥{self.memory_critical}% | "
+                f"Disk: ≥{self.disk_critical}% | "
+                f"Next: <t:{int(current_time) + 3600}:R>"
+            )
+            embed.set_footer(text=footer_text)
+            
+            await log_channel.send(embed=embed)
+            self.last_hourly_report = current_time
+            self.report_count += 1
+            
+            print(f"📊 Sent enhanced hourly system status report to log channel")
+            
+        except Exception as e:
+            print(f"❌ Error sending enhanced hourly status report: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def format_health_section(self, cpu_temp, cpu_usage, memory_usage, disk_usage):
+        """Format system health section with status indicators."""
+        cpu_emoji = self.get_status_emoji(cpu_temp, self.cpu_temp_warning, self.cpu_temp_critical, "temp")
+        memory_emoji = self.get_status_emoji(memory_usage, self.memory_warning, self.memory_critical, "percent")
+        disk_emoji = self.get_status_emoji(disk_usage, self.disk_warning, self.disk_critical, "percent")
+        
+        lines = []
+        lines.append(f"{cpu_emoji} **CPU:** {cpu_temp or 'N/A'}°C | {cpu_usage or 'N/A'}%")
+        lines.append(f"{memory_emoji} **Memory:** {memory_usage or 'N/A'}%")
+        lines.append(f"{disk_emoji} **Disk:** {disk_usage or 'N/A'}%")
+        
+        # Add thresholds info
+        lines.append(f"")
+        lines.append(f"**Thresholds:** CPU≥{self.cpu_temp_critical}°C, Mem≥{self.memory_critical}%, Disk≥{self.disk_critical}%")
+        
+        return "\n".join(lines)
+    
+    def format_bot_stats(self, total_users, active_chats, registered_today):
+        """Format bot statistics section."""
+        lines = []
+        lines.append(f"👤 **Users:** {total_users}")
+        lines.append(f"💬 **Active Chats:** {active_chats}")
+        lines.append(f"📝 **Reg Today:** {registered_today}")
+        lines.append(f"📁 **JSON Size:** {self.format_file_size(self.get_registry_file_size())}")
+        return "\n".join(lines)
+    
+    def format_storage_section(self, disk_usage, registry_size, total_users):
+        """Format storage and data section."""
+        lines = []
+        
+        # Disk usage with bar
+        disk_bar = self.create_progress_bar(disk_usage or 0)
+        lines.append(f"💿 **Disk:** {disk_usage or 0}%")
+        lines.append(f"`{disk_bar}`")
+        
+        # Registry info
+        registry_emoji = self.get_status_emoji(registry_size, self.registry_warning, self.registry_critical, "size")
+        lines.append(f"{registry_emoji} **Registry:** {self.format_file_size(registry_size)}")
+        lines.append(f"📊 **Avg/User:** {self.format_file_size((registry_size or 0) / max(total_users, 1))}")
+        
+        return "\n".join(lines)
+    
+    def format_uptime_section(self, system_uptime, bot_uptime, process_count, network_info):
+        """Format uptime and performance section."""
+        lines = []
+        lines.append(f"🖥️ **System:** {self.format_uptime(system_uptime)}")
+        lines.append(f"🤖 **Bot:** {self.format_uptime(bot_uptime)}")
+        lines.append(f"⚙️ **Processes:** {process_count}")
+        
+        if network_info:
+            lines.append(f"🌐 **Network:** {network_info}")
+        
+        # Load averages (Linux only)
+        try:
+            load_avg = os.getloadavg()
+            lines.append(f"📊 **Load Avg:** {load_avg[0]:.2f}, {load_avg[1]:.2f}, {load_avg[2]:.2f}")
+        except:
+            pass
+        
+        return "\n".join(lines)
+    
+    def format_task_section(self):
+        """Format background tasks section."""
+        lines = []
+        
+        # JSON sync task
+        json_task = update_json_with_roles
+        json_status = "✅" if json_task.is_running() else "❌"
+        lines.append(f"{json_status} **JSON Sync:** {'Running' if json_task.is_running() else 'Stopped'}")
+        
+        # Monitoring task
+        monitoring = monitoring_task
+        monitor_status = "✅" if monitoring.is_running() else "❌"
+        lines.append(f"{monitor_status} **Monitoring:** {'Running' if monitoring.is_running() else 'Stopped'}")
+        
+        # Next JSON sync time
+        if json_task.is_running():
+            try:
+                next_run = json_task.next_iteration
+                if next_run:
+                    next_run_timestamp = int(next_run.timestamp())
+                    lines.append(f"🔄 **Next Sync:** <t:{next_run_timestamp}:R>")
+            except:
+                pass
+        
+        return "\n".join(lines)
+    
+    def format_trends_section(self):
+        """Format performance trends section."""
+        lines = []
+        
+        # CPU trend
+        if self.performance_history['cpu_temps']:
+            cpu_min = min(self.performance_history['cpu_temps'])
+            cpu_max = max(self.performance_history['cpu_temps'])
+            cpu_avg = sum(self.performance_history['cpu_temps']) / len(self.performance_history['cpu_temps'])
+            lines.append(f"🌡️ **CPU Temp:** {cpu_min:.1f}-{cpu_max:.1f}°C (avg: {cpu_avg:.1f}°C)")
+        
+        # Memory trend
+        if self.performance_history['memory_usage']:
+            mem_min = min(self.performance_history['memory_usage'])
+            mem_max = max(self.performance_history['memory_usage'])
+            mem_avg = sum(self.performance_history['memory_usage']) / len(self.performance_history['memory_usage'])
+            lines.append(f"🧠 **Memory:** {mem_min:.1f}-{mem_max:.1f}% (avg: {mem_avg:.1f}%)")
+        
+        return "\n".join(lines)
+    
+    def create_progress_bar(self, percentage, length=10):
+        """Create a text-based progress bar."""
+        filled = int(round(length * percentage / 100))
+        bar = '█' * filled + '░' * (length - filled)
+        return bar
+    
+    def get_overall_system_status(self, cpu_temp, memory_usage, disk_usage, registry_size):
+        """Determine overall system status based on all metrics."""
+        statuses = []
+        
+        if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+            statuses.append("CPU Critical")
+        elif cpu_temp and cpu_temp >= self.cpu_temp_warning:
+            statuses.append("CPU Warning")
+        
+        if memory_usage and memory_usage >= self.memory_critical:
+            statuses.append("Memory Critical")
+        elif memory_usage and memory_usage >= self.memory_warning:
+            statuses.append("Memory Warning")
+        
+        if disk_usage and disk_usage >= self.disk_critical:
+            statuses.append("Disk Critical")
+        elif disk_usage and disk_usage >= self.disk_warning:
+            statuses.append("Disk Warning")
+        
+        if registry_size and registry_size >= self.registry_critical:
+            statuses.append("Registry Critical")
+        elif registry_size and registry_size >= self.registry_warning:
+            statuses.append("Registry Warning")
+        
+        if not statuses:
+            return "✅ **All Systems Normal**"
+        elif any("Critical" in s for s in statuses):
+            return f"🚨 **CRITICAL: {', '.join(statuses)}**"
+        else:
+            return f"⚠️ **WARNINGS: {', '.join(statuses)}**"
+    
+    def get_status_color(self, status_text):
+        """Get embed color based on status text."""
+        if "CRITICAL" in status_text:
+            return discord.Color.red()
+        elif "WARNINGS" in status_text:
+            return discord.Color.orange()
+        elif "Normal" in status_text:
+            return discord.Color.green()
+        else:
+            return discord.Color.blue()
+    
+    def check_active_alerts(self, cpu_temp, memory_usage, disk_usage, registry_size):
+        """Check for active alerts that need immediate attention."""
+        alerts = []
+        
+        if cpu_temp and cpu_temp >= self.cpu_temp_critical:
+            alerts.append(f"🔥 CPU Temperature: {cpu_temp}°C (Critical: ≥{self.cpu_temp_critical}°C)")
+        
+        if memory_usage and memory_usage >= self.memory_critical:
+            alerts.append(f"💾 Memory Usage: {memory_usage}% (Critical: ≥{self.memory_critical}%)")
+        
+        if disk_usage and disk_usage >= self.disk_critical:
+            alerts.append(f"💿 Disk Usage: {disk_usage}% (Critical: ≥{self.disk_critical}%)")
+        
+        if registry_size and registry_size >= self.registry_critical:
+            alerts.append(f"📁 Registry Size: {self.format_file_size(registry_size)} (Critical: ≥{self.format_file_size(self.registry_critical)})")
+        
+        return alerts
+    
+    def update_performance_history(self, cpu_temp, memory_usage, disk_usage, registry_size):
+        """Update performance history for trends."""
+        if cpu_temp:
+            self.performance_history['cpu_temps'].append(cpu_temp)
+            if len(self.performance_history['cpu_temps']) > self.MAX_HISTORY:
+                self.performance_history['cpu_temps'].pop(0)
+        
+        if memory_usage:
+            self.performance_history['memory_usage'].append(memory_usage)
+            if len(self.performance_history['memory_usage']) > self.MAX_HISTORY:
+                self.performance_history['memory_usage'].pop(0)
+        
+        if disk_usage:
+            self.performance_history['disk_usage'].append(disk_usage)
+            if len(self.performance_history['disk_usage']) > self.MAX_HISTORY:
+                self.performance_history['disk_usage'].pop(0)
+        
+        if registry_size:
+            self.performance_history['registry_sizes'].append(registry_size)
+            if len(self.performance_history['registry_sizes']) > self.MAX_HISTORY:
+                self.performance_history['registry_sizes'].pop(0)
+    
+    def get_registrations_today(self):
+        """Get number of registrations in the last 24 hours."""
+        try:
+            count = 0
+            today = datetime.now(timezone.utc).date()
+            
+            for user_data in registered_users.values():
+                registered_at = user_data.get('registered_at')
+                if registered_at:
+                    try:
+                        # Parse the ISO format timestamp
+                        reg_date = datetime.fromisoformat(registered_at.replace('Z', '+00:00')).date()
+                        if reg_date == today:
+                            count += 1
+                    except:
+                        continue
+            
+            return count
+        except:
+            return 0
+    
+    def get_process_count(self):
+        """Get number of running processes."""
+        try:
+            return len(psutil.pids())
+        except:
+            return "N/A"
+    
+    def get_network_info(self):
+        """Get network information."""
+        try:
+            net_io = psutil.net_io_counters()
+            return f"↑{self.format_file_size(net_io.bytes_sent)} ↓{self.format_file_size(net_io.bytes_recv)}"
+        except:
+            return None
+
+    # Keep existing methods for getting system metrics
     async def get_cpu_temperature(self):
         """Get CPU temperature for Raspberry Pi."""
         try:
@@ -5465,7 +5915,6 @@ class SystemMonitor:
                     temp = float(f.read().strip()) / 1000.0
                 return temp
             else:
-                # Fallback for non-RPi systems or if temp file doesn't exist
                 # Try using vcgencmd for Raspberry Pi
                 try:
                     result = subprocess.run(['vcgencmd', 'measure_temp'], 
@@ -5543,281 +5992,42 @@ class SystemMonitor:
             print(f"❌ Error calculating bot uptime: {e}")
             return None
     
-    def format_uptime(self, seconds):
-        """Convert seconds to human readable uptime format."""
-        if seconds is None:
-            return "Unknown"
-        
-        days = int(seconds // 86400)
-        hours = int((seconds % 86400) // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        
-        parts = []
-        if days > 0:
-            parts.append(f"{days}d")
-        if hours > 0:
-            parts.append(f"{hours}h")
-        if minutes > 0:
-            parts.append(f"{minutes}m")
-        if secs > 0 or not parts:
-            parts.append(f"{secs}s")
-        
-        return " ".join(parts)
-    
-    def format_file_size(self, size_bytes):
-        """Convert bytes to human readable format."""
-        if size_bytes is None:
-            return "Unknown"
-        
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} TB"
-    
-    async def send_startup_system_report(self):
-        """Send comprehensive system status report to log channel on startup."""
+    async def check_system_metrics(self):
+        """Check all system metrics and send alerts only if critical."""
         try:
-            guild = self.bot.get_guild(GUILD_ID)
-            if not guild or not LOG_CHANNEL_ID:
-                print("⚠️ Cannot send startup report: Guild or log channel not found")
-                return
-            
-            log_channel = guild.get_channel(LOG_CHANNEL_ID)
-            if not log_channel:
-                print("⚠️ Cannot send startup report: Log channel not found")
-                return
-            
-            # Get all system metrics
+            # Check CPU temperature
             cpu_temp = await self.get_cpu_temperature()
-            cpu_usage = self.get_cpu_usage()
-            memory_usage = self.get_memory_usage()
-            disk_usage = self.get_disk_usage()
-            system_uptime = self.get_system_uptime()
-            registry_size = self.get_registry_file_size()
-            
-            # Get bot-specific info
-            bot_start_time = getattr(self.bot, 'start_time', time.time())
-            bot_uptime = self.get_bot_uptime(bot_start_time)
-            
-            # Get system info
-            hostname = platform.node()
-            os_info = f"{platform.system()} {platform.release()}"
-            python_version = platform.python_version()
-            
-            # Create comprehensive startup embed
-            embed = discord.Embed(
-                title="🚀 Bot Startup - System Status Report",
-                description=f"**{self.bot.user.name}** is now online and monitoring system health.\n"
-                          f"**Host:** `{hostname}`\n"
-                          f"**Start Time:** <t:{int(time.time())}:F>",
-                color=discord.Color.green(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            # System Information
-            embed.add_field(
-                name="🖥️ System Information",
-                value=f"**OS:** {os_info}\n"
-                     f"**Python:** {python_version}\n"
-                     f"**System Uptime:** {self.format_uptime(system_uptime)}\n"
-                     f"**Bot Uptime:** {self.format_uptime(bot_uptime)}",
-                inline=False
-            )
-            
-            # Hardware Status
-            cpu_status = self.get_status_emoji(cpu_temp, self.cpu_temp_critical, "temp")
-            memory_status = self.get_status_emoji(memory_usage, self.memory_critical, "percent")
-            disk_status = self.get_status_emoji(disk_usage, 90, "percent")  # 90% disk usage threshold
-            
-            embed.add_field(
-                name="🔧 Hardware Status",
-                value=f"{cpu_status} **CPU:** {cpu_temp or 'N/A'}°C | {cpu_usage or 'N/A'}%\n"
-                     f"{memory_status} **Memory:** {memory_usage or 'N/A'}%\n"
-                     f"{disk_status} **Disk:** {disk_usage or 'N/A'}%",
-                inline=True
-            )
-            
-            # Application Status
-            registry_status = self.get_status_emoji(registry_size, self.registry_critical, "size")
-            total_users = len(registered_users)
-            
-            embed.add_field(
-                name="📊 Application Status",
-                value=f"{registry_status} **Registry:** {self.format_file_size(registry_size)}\n"
-                     f"👤 **Registered Users:** {total_users}\n"
-                     f"💬 **Active Chats:** {len(private_channels)}",
-                inline=True
-            )
-            
-            # Monitoring Configuration
-            embed.add_field(
-                name="⚙️ Monitoring Configuration",
-                value=f"**Check Interval:** {self.check_interval//60} minutes\n"
-                     f"**CPU Critical:** ≥{self.cpu_temp_critical}°C\n"
-                     f"**Memory Critical:** ≥{self.memory_critical}%\n"
-                     f"**Registry Critical:** ≥{self.format_file_size(self.registry_critical)}\n"
-                     f"**Alert Cooldown:** {self.alert_cooldown//3600} hours",
-                inline=False
-            )
-            
-            # Bot Services Status
-            json_task_status = "✅ Running" if update_json_with_roles.is_running() else "❌ Stopped"
-            monitoring_task_status = "✅ Running" if monitoring_task.is_running() else "❌ Stopped"
-            
-            embed.add_field(
-                name="🔄 Background Services",
-                value=f"**JSON Sync Task:** {json_task_status}\n"
-                     f"**System Monitoring:** {monitoring_task_status}\n"
-                     f"**Hourly Reports:** ✅ Enabled",
-                inline=True
-            )
-            
-            embed.set_footer(text="System monitoring active. Hourly reports will be sent to this channel.")
-            
-            await log_channel.send(embed=embed)
-            print(f"📊 Sent startup system report to log channel")
-            
-            # Store bot start time for uptime calculations
-            self.bot.start_time = time.time()
-            
-        except Exception as e:
-            print(f"❌ Error sending startup system report: {e}")
-    
-    async def send_hourly_status_report(self):
-        """Send hourly system status report to log channel."""
-        try:
-            current_time = time.time()
-            
-            # Check if at least 1 hour has passed since last report
-            if current_time - self.last_hourly_report < 3600:
-                return
-            
-            guild = self.bot.get_guild(GUILD_ID)
-            if not guild or not LOG_CHANNEL_ID:
-                return
-            
-            log_channel = guild.get_channel(LOG_CHANNEL_ID)
-            if not log_channel:
-                return
-            
-            # Get all system metrics
-            cpu_temp = await self.get_cpu_temperature()
-            cpu_usage = self.get_cpu_usage()
-            memory_usage = self.get_memory_usage()
-            disk_usage = self.get_disk_usage()
-            registry_size = self.get_registry_file_size()
-            
-            # Get uptime info
-            system_uptime = self.get_system_uptime()
-            bot_uptime = self.get_bot_uptime(getattr(self.bot, 'start_time', current_time))
-            
-            # Create hourly status embed
-            embed = discord.Embed(
-                title="⏰ Hourly System Status",
-                description=f"**Time:** <t:{int(current_time)}:F>\n"
-                          f"**Bot:** {self.bot.user.name}",
-                color=discord.Color.blue(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            # System Health
-            cpu_status = self.get_status_emoji(cpu_temp, self.cpu_temp_critical, "temp")
-            memory_status = self.get_status_emoji(memory_usage, self.memory_critical, "percent")
-            disk_status = self.get_status_emoji(disk_usage, 90, "percent")
-            registry_status = self.get_status_emoji(registry_size, self.registry_critical, "size")
-            
-            embed.add_field(
-                name="📈 System Health",
-                value=f"{cpu_status} **CPU:** {cpu_temp or 'N/A'}°C | {cpu_usage or 'N/A'}%\n"
-                     f"{memory_status} **Memory:** {memory_usage or 'N/A'}%\n"
-                     f"{disk_status} **Disk:** {disk_usage or 'N/A'}%\n"
-                     f"{registry_status} **Registry:** {self.format_file_size(registry_size)}",
-                inline=True
-            )
-            
-            # Uptime Information
-            embed.add_field(
-                name="⏱️ Uptime",
-                value=f"**System:** {self.format_uptime(system_uptime)}\n"
-                     f"**Bot:** {self.format_uptime(bot_uptime)}\n"
-                     f"**Next Report:** <t:{int(current_time) + 3600}:R>",
-                inline=True
-            )
-            
-            # Bot Statistics
-            total_users = len(registered_users)
-            active_chats = len(private_channels)
-            
-            embed.add_field(
-                name="📊 Bot Statistics",
-                value=f"👤 **Users:** {total_users}\n"
-                     f"💬 **Active Chats:** {active_chats}\n"
-                     f"🔄 **JSON Task:** {'✅' if update_json_with_roles.is_running() else '❌'}",
-                inline=True
-            )
-            
-            # Check for any critical conditions
-            critical_alerts = []
             if cpu_temp and cpu_temp >= self.cpu_temp_critical:
-                critical_alerts.append(f"🔥 CPU Temp: {cpu_temp}°C")
+                await self.send_monitoring_alert("cpu_temp", cpu_temp, self.cpu_temp_critical)
+            
+            # Check memory usage
+            memory_usage = self.get_memory_usage()
             if memory_usage and memory_usage >= self.memory_critical:
-                critical_alerts.append(f"💾 Memory: {memory_usage}%")
+                await self.send_monitoring_alert("memory", memory_usage, self.memory_critical)
+            
+            # Check disk usage
+            disk_usage = self.get_disk_usage()
+            if disk_usage and disk_usage >= self.disk_critical:
+                await self.send_monitoring_alert("disk", disk_usage, self.disk_critical)
+            
+            # Check registry file size
+            registry_size = self.get_registry_file_size()
             if registry_size and registry_size >= self.registry_critical:
-                critical_alerts.append(f"📁 Registry: {self.format_file_size(registry_size)}")
+                await self.send_monitoring_alert("registry", registry_size, self.registry_critical)
             
-            if critical_alerts:
-                embed.add_field(
-                    name="🚨 Critical Alerts Active",
-                    value="\n".join([f"• {alert}" for alert in critical_alerts]),
-                    inline=False
-                )
-                embed.color = discord.Color.red()
+            # Send enhanced hourly report
+            await self.send_enhanced_hourly_report()
             
-            embed.set_footer(text="Hourly system status report")
-            
-            await log_channel.send(embed=embed)
-            self.last_hourly_report = current_time
-            
-            print(f"⏰ Sent hourly system status report to log channel")
+            # SILENT mode: Minimal console output
+            # Only log errors, not normal status
             
         except Exception as e:
-            print(f"❌ Error sending hourly status report: {e}")
-    
-    def get_status_emoji(self, value, threshold, value_type):
-        """Get appropriate emoji for status based on value and threshold."""
-        if value is None:
-            return "❓"
-        
-        if value_type == "temp":
-            if value >= threshold:
-                return "🔥"  # Critical
-            elif value >= threshold * 0.8:  # 80% of threshold
-                return "⚠️"  # Warning
-            else:
-                return "✅"  # Normal
-        
-        elif value_type == "percent":
-            if value >= threshold:
-                return "🔴"  # Critical
-            elif value >= threshold * 0.8:  # 80% of threshold
-                return "🟡"  # Warning
-            else:
-                return "🟢"  # Normal
-        
-        elif value_type == "size":
-            if value >= threshold:
-                return "📈"  # Critical
-            elif value >= threshold * 0.8:  # 80% of threshold
-                return "📊"  # Warning
-            else:
-                return "📉"  # Normal
-        
-        return "❓"
+            print(f"❌ Error in system metrics check: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def send_monitoring_alert(self, metric, value, threshold):
-        """Send alert to admin via Discord DM."""
+        """Send alert to admin via Discord DM when critical thresholds are exceeded."""
         try:
             admin_user = self.bot.get_user(ADMIN_USER_ID)
             if not admin_user:
@@ -5846,10 +6056,15 @@ class SystemMonitor:
                 description = f"Memory usage is at **{value}%** which exceeds the critical threshold of **{threshold}%**!"
                 color = discord.Color.orange()
                 icon = "💾"
+            elif metric == "disk":
+                title = "💿 Disk Usage Critical"
+                description = f"Disk usage is at **{value}%** which exceeds the critical threshold of **{threshold}%**!"
+                color = discord.Color.purple()
+                icon = "💿"
             elif metric == "registry":
                 title = "📁 Registry File Size Critical"
                 description = f"Registry file size is **{self.format_file_size(value)}** which exceeds the critical threshold of **{self.format_file_size(threshold)}**!"
-                color = discord.Color.purple()
+                color = discord.Color.dark_purple()
                 icon = "📁"
             else:
                 return
@@ -5879,6 +6094,12 @@ class SystemMonitor:
                     value="• Close unnecessary applications\n• Check for memory leaks\n• Consider adding more RAM",
                     inline=False
                 )
+            elif metric == "disk":
+                embed.add_field(
+                    name="💡 Recommendations",
+                    value="• Clean up temporary files\n• Archive old logs\n• Expand storage capacity",
+                    inline=False
+                )
             elif metric == "registry":
                 embed.add_field(
                     name="💡 Recommendations",
@@ -5906,145 +6127,6 @@ class SystemMonitor:
                 
         except Exception as e:
             print(f"❌ Error sending monitoring alert: {e}")
-    
-    async def send_monitoring_status(self, channel):
-        """Send current system status to a channel."""
-        try:
-            # Gather all metrics
-            cpu_temp = await self.get_cpu_temperature()
-            memory_usage = self.get_memory_usage()
-            registry_size = self.get_registry_file_size()
-            
-            # Get additional system info
-            cpu_percent = psutil.cpu_percent(interval=1)
-            disk_usage = psutil.disk_usage('/')
-            uptime_seconds = time.time() - psutil.boot_time()
-            
-            # Convert uptime to readable format
-            uptime_days = int(uptime_seconds // 86400)
-            uptime_hours = int((uptime_seconds % 86400) // 3600)
-            uptime_minutes = int((uptime_seconds % 3600) // 60)
-            
-            # Create status embed
-            embed = discord.Embed(
-                title="📊 System Monitoring Status",
-                description=f"Last updated: <t:{int(time.time())}:R>",
-                color=discord.Color.blue(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            # CPU Information
-            cpu_status = "✅ Normal"
-            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
-                cpu_status = f"🔥 **CRITICAL** ({cpu_temp}°C)"
-            elif cpu_temp and cpu_temp >= self.cpu_temp_critical * 0.8:  # 80% of critical
-                cpu_status = f"⚠️ Warning ({cpu_temp}°C)"
-            
-            cpu_text = f"**Temperature:** {cpu_temp}°C\n"
-            cpu_text += f"**Usage:** {cpu_percent}%\n"
-            cpu_text += f"**Status:** {cpu_status}"
-            embed.add_field(name="🖥️ CPU", value=cpu_text, inline=True)
-            
-            # Memory Information
-            memory_status = "✅ Normal"
-            if memory_usage and memory_usage >= self.memory_critical:
-                memory_status = f"💾 **CRITICAL** ({memory_usage}%)"
-            elif memory_usage and memory_usage >= self.memory_critical * 0.8:  # 80% of critical
-                memory_status = f"⚠️ Warning ({memory_usage}%)"
-            
-            memory = psutil.virtual_memory()
-            memory_text = f"**Usage:** {memory_usage}%\n"
-            memory_text += f"**Available:** {self.format_file_size(memory.available)}\n"
-            memory_text += f"**Status:** {memory_status}"
-            embed.add_field(name="🧠 Memory", value=memory_text, inline=True)
-            
-            # Disk Information
-            disk_text = f"**Total:** {self.format_file_size(disk_usage.total)}\n"
-            disk_text += f"**Used:** {self.format_file_size(disk_usage.used)}\n"
-            disk_text += f"**Free:** {self.format_file_size(disk_usage.free)}\n"
-            disk_text += f"**Usage:** {disk_usage.percent}%"
-            embed.add_field(name="💿 Disk", value=disk_text, inline=True)
-            
-            # Registry Information
-            registry_status = "✅ Normal"
-            if registry_size and registry_size >= self.registry_critical:
-                registry_status = f"📁 **CRITICAL** ({self.format_file_size(registry_size)})"
-            elif registry_size and registry_size >= self.registry_critical * 0.8:  # 80% of critical
-                registry_status = f"⚠️ Warning ({self.format_file_size(registry_size)})"
-            
-            registry_text = f"**Size:** {self.format_file_size(registry_size)}\n"
-            registry_text += f"**Users:** {len(registered_users)}\n"
-            registry_text += f"**Status:** {registry_status}"
-            embed.add_field(name="📝 Registry", value=registry_text, inline=True)
-            
-            # System Information
-            system_text = f"**Host:** {platform.node()}\n"
-            system_text += f"**OS:** {platform.system()} {platform.release()}\n"
-            system_text += f"**Uptime:** {uptime_days}d {uptime_hours}h {uptime_minutes}m\n"
-            system_text += f"**Python:** {platform.python_version()}"
-            embed.add_field(name="⚙️ System", value=system_text, inline=True)
-            
-            # Alert Status
-            alerts_active = []
-            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
-                alerts_active.append("CPU Temperature")
-            if memory_usage and memory_usage >= self.memory_critical:
-                alerts_active.append("Memory Usage")
-            if registry_size and registry_size >= self.registry_critical:
-                alerts_active.append("Registry Size")
-            
-            if alerts_active:
-                alert_text = "🔴 **ACTIVE CRITICAL ALERTS:**\n"
-                alert_text += "\n".join([f"• {alert}" for alert in alerts_active])
-                alert_text += f"\n\n⏳ **Alert Cooldown:** {self.alert_cooldown//3600}h"
-                embed.add_field(name="🚨 Alert Status", value=alert_text, inline=False)
-            else:
-                embed.add_field(name="✅ Alert Status", value="No active critical alerts", inline=False)
-            
-            # Footer with thresholds
-            footer_text = f"Thresholds: CPU ≥{self.cpu_temp_critical}°C | Mem ≥{self.memory_critical}% | Registry ≥{self.format_file_size(self.registry_critical)}"
-            embed.set_footer(text=footer_text)
-            
-            await channel.send(embed=embed)
-            
-        except Exception as e:
-            print(f"❌ Error sending monitoring status: {e}")
-            error_embed = discord.Embed(
-                title="❌ Monitoring Error",
-                description=f"Failed to get system status: {str(e)}",
-                color=discord.Color.red()
-            )
-            await channel.send(embed=error_embed)
-    
-    async def check_system_metrics(self):
-        """Check all system metrics and send alerts only if critical."""
-        try:
-            # Check CPU temperature
-            cpu_temp = await self.get_cpu_temperature()
-            if cpu_temp and cpu_temp >= self.cpu_temp_critical:
-                await self.send_monitoring_alert("cpu_temp", cpu_temp, self.cpu_temp_critical)
-            
-            # Check memory usage
-            memory_usage = self.get_memory_usage()
-            if memory_usage and memory_usage >= self.memory_critical:
-                await self.send_monitoring_alert("memory", memory_usage, self.memory_critical)
-            
-            # Check registry file size
-            registry_size = self.get_registry_file_size()
-            if registry_size and registry_size >= self.registry_critical:
-                await self.send_monitoring_alert("registry", registry_size, self.registry_critical)
-            
-            # Check for hourly report
-            await self.send_hourly_status_report()
-            
-            # SILENT mode: No console output for normal status
-            # Just quietly check without logging
-            
-        except Exception as e:
-            print(f"❌ Error in system metrics check: {e}")
-
-# Create global instance
-system_monitor = None
 
 # =============================================================================
 # MONITORING TASK
@@ -6066,17 +6148,161 @@ async def before_monitoring_task():
 # =============================================================================
 # MONITORING COMMANDS
 # =============================================================================
-
 @bot_command.command(name="system_status")
 @bot_channel_only()
 async def chat_system_status(ctx):
-    """Display current system status and monitoring information."""
+    """Display current enhanced system status with detailed information."""
     global system_monitor
     if not system_monitor:
         await ctx.send("❌ System monitor not initialized.", ephemeral=True)
         return
     
-    await system_monitor.send_monitoring_status(ctx.channel)
+    # Create a comprehensive system status embed
+    embed = discord.Embed(
+        title="📊 SYSTEM STATUS REPORT",
+        description=f"**Generated:** <t:{int(time.time())}:F>\n"
+                  f"**Bot:** {bot.user.name}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    # Get all system metrics
+    cpu_temp = await system_monitor.get_cpu_temperature()
+    cpu_usage = system_monitor.get_cpu_usage()
+    memory_usage = system_monitor.get_memory_usage()
+    disk_usage = system_monitor.get_disk_usage()
+    registry_size = system_monitor.get_registry_file_size()
+    
+    # Get uptime info
+    system_uptime = system_monitor.get_system_uptime()
+    bot_uptime = system_monitor.get_bot_uptime(getattr(bot, 'start_time', time.time()))
+    
+    # Section 1: SYSTEM HEALTH
+    cpu_emoji = system_monitor.get_status_emoji(cpu_temp, system_monitor.cpu_temp_warning, system_monitor.cpu_temp_critical, "temp")
+    memory_emoji = system_monitor.get_status_emoji(memory_usage, system_monitor.memory_warning, system_monitor.memory_critical, "percent")
+    disk_emoji = system_monitor.get_status_emoji(disk_usage, system_monitor.disk_warning, system_monitor.disk_critical, "percent")
+    
+    health_section = (
+        f"{cpu_emoji} **CPU Temperature:** {cpu_temp or 'N/A'}°C\n"
+        f"   ↳ Usage: {cpu_usage or 'N/A'}%\n"
+        f"   ↳ Thresholds: Warning≥{system_monitor.cpu_temp_warning}°C, Critical≥{system_monitor.cpu_temp_critical}°C\n\n"
+        
+        f"{memory_emoji} **Memory Usage:** {memory_usage or 'N/A'}%\n"
+        f"   ↳ Thresholds: Warning≥{system_monitor.memory_warning}%, Critical≥{system_monitor.memory_critical}%\n\n"
+        
+        f"{disk_emoji} **Disk Usage:** {disk_usage or 'N/A'}%\n"
+        f"   ↳ Thresholds: Warning≥{system_monitor.disk_warning}%, Critical≥{system_monitor.disk_critical}%\n"
+    )
+    
+    embed.add_field(name="🩺 SYSTEM HEALTH", value=health_section, inline=False)
+    
+    # Section 2: BOT STATISTICS
+    total_users = len(registered_users)
+    active_chats = len(private_channels)
+    registered_today = system_monitor.get_registrations_today()
+    
+    bot_stats = (
+        f"👤 **Registered Users:** {total_users}\n"
+        f"💬 **Active Private Chats:** {active_chats}\n"
+        f"📝 **Registrations Today:** {registered_today}\n"
+        f"📁 **Registry File Size:** {system_monitor.format_file_size(registry_size)}\n"
+        f"   ↳ Thresholds: Warning≥{system_monitor.format_file_size(system_monitor.registry_warning)}, "
+        f"Critical≥{system_monitor.format_file_size(system_monitor.registry_critical)}\n"
+    )
+    
+    embed.add_field(name="🤖 BOT STATISTICS", value=bot_stats, inline=False)
+    
+    # Section 3: UPTIME & PERFORMANCE
+    uptime_section = (
+        f"🖥️ **System Uptime:** {system_monitor.format_uptime(system_uptime)}\n"
+        f"🤖 **Bot Uptime:** {system_monitor.format_uptime(bot_uptime)}\n"
+        f"⚙️ **Process Count:** {system_monitor.get_process_count()}\n"
+    )
+    
+    # Add load averages if available
+    try:
+        load_avg = os.getloadavg()
+        uptime_section += f"📊 **Load Average:** {load_avg[0]:.2f}, {load_avg[1]:.2f}, {load_avg[2]:.2f}\n"
+    except:
+        pass
+    
+    # Add network info if available
+    network_info = system_monitor.get_network_info()
+    if network_info:
+        uptime_section += f"🌐 **Network:** {network_info}\n"
+    
+    embed.add_field(name="⏱️ UPTIME & PERFORMANCE", value=uptime_section, inline=False)
+    
+    # Section 4: BACKGROUND TASKS
+    json_task = update_json_with_roles
+    monitoring = monitoring_task
+    
+    tasks_section = (
+        f"{'✅' if json_task.is_running() else '❌'} **JSON Sync Task:** {'Running' if json_task.is_running() else 'Stopped'}\n"
+        f"{'✅' if monitoring.is_running() else '❌'} **System Monitoring:** {'Running' if monitoring.is_running() else 'Stopped'}\n"
+        f"🔄 **Next JSON Sync:** {'N/A' if not json_task.is_running() else '<t:' + str(int(json_task.next_iteration.timestamp())) + ':R>'}\n"
+        f"⏰ **Next Hourly Report:** <t:{int(time.time() + 3600 - (time.time() - system_monitor.last_hourly_report))}:R>\n"
+        f"📈 **Reports Sent:** {system_monitor.report_count}\n"
+    )
+    
+    embed.add_field(name="🔄 BACKGROUND TASKS", value=tasks_section, inline=False)
+    
+    # Section 5: PERFORMANCE TRENDS
+    if len(system_monitor.performance_history['cpu_temps']) > 0:
+        cpu_min = min(system_monitor.performance_history['cpu_temps'])
+        cpu_max = max(system_monitor.performance_history['cpu_temps'])
+        cpu_avg = sum(system_monitor.performance_history['cpu_temps']) / len(system_monitor.performance_history['cpu_temps'])
+        
+        trends_section = (
+            f"🌡️ **CPU Temperature:**\n"
+            f"   ↳ Min: {cpu_min:.1f}°C\n"
+            f"   ↳ Max: {cpu_max:.1f}°C\n"
+            f"   ↳ Avg: {cpu_avg:.1f}°C\n"
+        )
+        
+        if len(system_monitor.performance_history['memory_usage']) > 0:
+            mem_min = min(system_monitor.performance_history['memory_usage'])
+            mem_max = max(system_monitor.performance_history['memory_usage'])
+            mem_avg = sum(system_monitor.performance_history['memory_usage']) / len(system_monitor.performance_history['memory_usage'])
+            
+            trends_section += (
+                f"\n🧠 **Memory Usage:**\n"
+                f"   ↳ Min: {mem_min:.1f}%\n"
+                f"   ↳ Max: {mem_max:.1f}%\n"
+                f"   ↳ Avg: {mem_avg:.1f}%\n"
+            )
+        
+        embed.add_field(name="📈 PERFORMANCE TRENDS", value=trends_section, inline=False)
+    
+    # Section 6: ACTIVE ALERTS
+    active_alerts = system_monitor.check_active_alerts(cpu_temp, memory_usage, disk_usage, registry_size)
+    if active_alerts:
+        embed.add_field(
+            name="🚨 ACTIVE CRITICAL ALERTS",
+            value="\n".join([f"• {alert}" for alert in active_alerts]),
+            inline=False
+        )
+        embed.color = discord.Color.red()
+    
+    # Section 7: MONITORING CONFIGURATION
+    config_section = (
+        f"⚙️ **Check Interval:** {system_monitor.check_interval // 60} minutes\n"
+        f"⏳ **Alert Cooldown:** {system_monitor.alert_cooldown // 3600} hours\n"
+        f"📊 **History Points:** {len(system_monitor.performance_history['cpu_temps'])}/{system_monitor.MAX_HISTORY}\n"
+        f"📋 **Log Channel:** {'✅ Configured' if LOG_CHANNEL_ID else '❌ Not configured'}\n"
+    )
+    
+    embed.add_field(name="🔧 MONITORING CONFIG", value=config_section, inline=False)
+    
+    # Footer
+    footer_text = (
+        f"System Monitor | "
+        f"Hourly reports: {system_monitor.report_count} | "
+        f"Next report: <t:{int(time.time() + 3600 - (time.time() - system_monitor.last_hourly_report))}:R>"
+    )
+    embed.set_footer(text=footer_text)
+    
+    await ctx.send(embed=embed)
 
 @bot_command.command(name="monitoring_config")
 @bot_channel_only()
@@ -6309,7 +6535,7 @@ async def chat_stop_monitoring(ctx):
         await ctx.send(f"❌ Failed to stop monitoring: {str(e)}", ephemeral=True)
 
 # =============================================================================
-# UPDATE ON_READY TO SEND STARTUP SYSTEM REPORT
+# MODIFY ON_READY TO REMOVE STARTUP REPORT
 # =============================================================================
 @bot.event
 async def on_ready():
@@ -6320,14 +6546,14 @@ async def on_ready():
     print(f'🆔 Bot ID: {bot.user.id}')
     print(f'👥 Connected to {len(bot.guilds)} server(s)')
     
-    # Initialize system monitor (but don't send reports)
+    # Initialize system monitor (for hourly reports only)
     system_monitor = SystemMonitor(bot)
-    print(f'📊 System monitor initialized with check interval: {system_monitor.check_interval}s')
+    print(f'📊 System monitor initialized')
     
-    # Send startup system report to log channel
-    await system_monitor.send_startup_system_report()
+    # Store bot start time for uptime calculations
+    bot.start_time = time.time()
     
-    # Minimal startup logging
+    # Minimal startup logging - NO STARTUP REPORT
     guild = bot.get_guild(GUILD_ID)
     if guild:
         # Just log to console
@@ -6363,6 +6589,7 @@ async def on_ready():
             try:
                 monitoring_task.start()
                 print('✅ System monitoring task started (every 5 minutes)')
+                print('   Hourly detailed reports will be sent to log channel')
             except Exception as e:
                 print(f'⚠️ Failed to start monitoring task: {e}')
         
@@ -6472,10 +6699,11 @@ async def on_ready():
             log_channel = guild.get_channel(LOG_CHANNEL_ID)
             if log_channel:
                 print(f'📋 Log Channel: #{log_channel.name} (ID: {LOG_CHANNEL_ID})')
+                print(f'   Enhanced hourly reports will be sent here')
             else:
                 print(f'⚠️ Log channel not found! ID: {LOG_CHANNEL_ID}')
         else:
-            print(f'⚠️ Log channel not configured! Notifications will be sent to admin DM')
+            print(f'⚠️ Log channel not configured! Enhanced hourly reports cannot be sent')
         
         # Validate green check mark consistency
         print("\n🔍 Checking registration status...")
@@ -6516,6 +6744,7 @@ async def on_ready():
     migrate_existing_users()
     
     print("\n🚀 Bot startup complete! All systems operational.")
+    print("   Enhanced hourly system reports will be sent to log channel")
     print("="*50)
 
 # ============================================================================
