@@ -1,0 +1,10 @@
+[2026-02-01 16:34:45] 
+[2026-02-01 16:34:45] ==================================================
+[2026-02-01 16:34:45] Traceback (most recent call last):
+[2026-02-01 16:34:45]   File "C:\Users\kyung\baekho_discord_bot\monitor.py", line 815, in <module>
+[2026-02-01 16:34:45]     print("\U0001f680 Starting Raspberry Pi System Health Monitor")
+[2026-02-01 16:34:45]     ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-02-01 16:34:45]   File "C:\Users\kyung\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+[2026-02-01 16:34:45]     return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+[2026-02-01 16:34:45]            ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-02-01 16:34:45] UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f680' in position 0: character maps to <undefined>

@@ -1003,8 +1003,8 @@
     "gender": "mother",
     "registered_at": "2026-01-21T22:54:45.424116+00:00",
     "programs": [],
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1467642682057691197,
     "roles": [
       "Family Member"
     ]

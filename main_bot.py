@@ -28,94 +28,6 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 import time
 
-import socket
-import json
-import time
-from threading import Thread
-
-class WatchdogClient:
-    """Client for communicating with watchdog supervisor."""
-    
-    def __init__(self):
-        self.watchdog_port = 9999
-        self.heartbeat_interval = 30  # seconds
-        self.running = False
-        self.heartbeat_thread = None
-    
-    def send_heartbeat(self):
-        """Send heartbeat to watchdog."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(2)
-                s.connect(('localhost', self.watchdog_port))
-                heartbeat = {
-                    'bot': 'mainbot',
-                    'timestamp': time.time(),
-                    'status': 'alive'
-                }
-                s.send(json.dumps(heartbeat).encode())
-                return True
-        except:
-            return False
-    
-    def start_heartbeat(self):
-        """Start heartbeat thread."""
-        self.running = True
-        
-        def heartbeat_loop():
-            while self.running:
-                try:
-                    if not self.send_heartbeat():
-                        print("⚠️ Could not send heartbeat to watchdog")
-                except Exception as e:
-                    print(f"⚠️ Heartbeat error: {e}")
-                
-                # Sleep for interval
-                for _ in range(self.heartbeat_interval * 10):
-                    if not self.running:
-                        break
-                    time.sleep(0.1)
-        
-        self.heartbeat_thread = Thread(target=heartbeat_loop, daemon=True)
-        self.heartbeat_thread.start()
-        print("💓 Heartbeat started for watchdog")
-    
-    def stop(self):
-        """Stop heartbeat."""
-        self.running = False
-        if self.heartbeat_thread:
-            self.heartbeat_thread.join(timeout=2)
-        print("💓 Heartbeat stopped")
-
-# Create watchdog client instance
-watchdog_client = WatchdogClient()
-
-# =============================================================================
-# MODIFIED ERROR HANDLER - ADD THIS BEFORE bot.run()
-# =============================================================================
-def run_bot_with_watchdog():
-    """Run bot with watchdog integration."""
-    try:
-        # Start heartbeat
-        watchdog_client.start_heartbeat()
-        
-        # Run the bot
-        bot.run(TOKEN)
-        
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR in mainbot: {e}")
-        print("🛑 Shutting down due to critical error...")
-        
-        # Stop heartbeat
-        watchdog_client.stop()
-        
-        # Exit with error code
-        import sys
-        sys.exit(1)
-    
-    finally:
-        watchdog_client.stop()
-
 # =============================================================================
 # CONFIGURATION MANAGEMENT
 # =============================================================================
@@ -2200,178 +2112,7 @@ async def cleanup_user_data(user_id: int) -> None:
             del private_channels[channel_id]
         del user_private_channels[user_id]
         print(f"🗑️ Removed private chat reference for user ID {user_id}")
-
-# =============================================================================
-# EVENT HANDLERS
-# =============================================================================
-@bot.event
-async def on_ready():
-    """Bot startup initialization and system verification."""
-    print(f'✅ {bot.user} is online!')
-    print(f'🆔 Bot ID: {bot.user.id}')
-    print(f'👥 Connected to {len(bot.guilds)} server(s)')
     
-    # AUTO-LOG ADMIN INFO ON SERVER START
-    guild = bot.get_guild(GUILD_ID)
-    if guild:
-        admin_member = guild.get_member(ADMIN_USER_ID)
-        if admin_member:
-            admin_id_str = str(ADMIN_USER_ID)
-            
-            # Check if admin already exists in registered_users
-            if admin_id_str not in registered_users:
-                # Create admin entry
-                registered_users[admin_id_str] = {
-                    'child_name': 'Admin User',
-                    'role': 'Admin',
-                    'role_display': '👑 Server Admin',
-                    'nickname': admin_member.display_name,
-                    'gender': 'admin',
-                    'programs': [],
-                    'registered_at': discord.utils.utcnow().isoformat(),
-                    'has_active_private_chat': False,
-                    'private_chat_channel_id': None,
-                    'roles': ['Admin'],
-                    'admin_user': True,
-                    'auto_added': True
-                }
-                save_registered_users(registered_users)
-                print(f"✅ Auto-logged admin user: {admin_member.name}")
-            else:
-                # Ensure admin has Admin role in the array
-                if 'Admin' not in registered_users[admin_id_str].get('roles', []):
-                    registered_users[admin_id_str]['roles'] = registered_users[admin_id_str].get('roles', []) + ['Admin']
-                    registered_users[admin_id_str]['admin_user'] = True
-                    save_registered_users(registered_users)
-                    print(f"✅ Updated admin roles for: {admin_member.name}")
-    
-    migrate_existing_users()
-
-    if guild:
-        print(f'🏠 Server: {guild.name} (ID: {guild.id})')
-        
-        # Register persistent views
-        bot.add_view(GeneralChatButtonView())
-        
-        # Re-register delete button views for existing private chats
-        await reinitialize_private_chat_views()
-        
-        # Verify monitored channels
-        print("\n📢 MONITORED CHANNELS (messages will create private chats):")
-        for channel_id in MONITORED_CHANNELS:
-            channel = guild.get_channel(channel_id)
-            if channel:
-                print(f'   ✅ #{channel.name} (ID: {channel.id})')
-            else:
-                print(f'   ❌ Channel not found! ID: {channel_id}')
-        
-        # Verify admin user
-        admin_user = guild.get_member(ADMIN_USER_ID)
-        if admin_user:
-            print(f'👑 Admin: {admin_user.name}#{admin_user.discriminator} (ID: {admin_user.id})')
-        else:
-            print(f'⚠️ Admin user not found! ID: {ADMIN_USER_ID}')
-        
-        # Verify Master Lee's Family role
-        master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-        if master_lee_family_role:
-            print(f'👑 Master Lee\'s Family Role: {master_lee_family_role.name} (ID: {master_lee_family_role.id})')
-            print(f'   👥 Members with this role: {len(master_lee_family_role.members)}')
-        else:
-            print(f'⚠️ Master Lee\'s Family role not found! ID: {MASTER_LEE_FAMILY_ROLE_ID}')
-
-       # Verify Student role
-        student_role = guild.get_role(STUDENT_ROLE_ID)
-        if student_role:
-            print(f'🎓 Student Role: {student_role.name} (ID: {student_role.id})')
-        else:
-            print(f'⚠️ Student role not found! ID: {STUDENT_ROLE_ID}')
-
-        # Verify Instructor role
-        instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
-        if instructor_role:
-            print(f'👨‍🏫 Instructor Role: {instructor_role.name} (ID: {instructor_role.id})')
-        else:
-            print(f'⚠️ Instructor role not found! ID: {INSTRUCTOR_ROLE_ID}')
-        
-        # Verify rules channel
-        rules_channel = guild.get_channel(RULES_CHANNEL_ID)
-        if rules_channel:
-            print(f'\n📜 Rules Channel: #{rules_channel.name} (ID: {rules_channel.id})')
-        else:
-            print(f'❌ Rules channel not found! ID: {RULES_CHANNEL_ID}')
-        
-        # Verify family role
-        family_role = guild.get_role(FAMILY_ROLE_ID)
-        if family_role:
-            print(f'👪 Family Role: {family_role.name} (ID: {family_role.id})')
-        else:
-            print(f'❌ Family role not found! ID: {FAMILY_ROLE_ID}')
-        
-        # Verify team roles
-        national_role = guild.get_role(NATIONAL_TEAM_ROLE_ID)
-        if national_role:
-            print(f'🔴 National Team Role: {national_role.name} (ID: {national_role.id})')
-        else:
-            print(f"⚠️ National Team role not found! ID: {NATIONAL_TEAM_ROLE_ID}")
-            
-        demonstration_role = guild.get_role(DEMONSTRATION_TEAM_ROLE_ID)
-        if demonstration_role:
-            print(f'🔵 Demonstration Team Role: {demonstration_role.name} (ID: {demonstration_role.id})')
-        else:
-            print(f'⚠️ Demonstration Team role not found! ID: {DEMONSTRATION_TEAM_ROLE_ID}')
-
-        after_school_role = guild.get_role(AFTER_SCHOOL_ROLE_ID)
-        if after_school_role:
-            print(f'📚 After School Role: {after_school_role.name} (ID: {after_school_role.id})')
-        else:
-            print(f'⚠️ After School role not found! ID: {AFTER_SCHOOL_ROLE_ID}')
-
-        # Verify After School channel
-        after_school_channel = guild.get_channel(AFTER_SCHOOL_CHANNEL_ID)
-        if after_school_channel:
-            print(f'📢 After School Channel: #{after_school_channel.name} (ID: {after_school_channel.id})')
-        else:
-            print(f'⚠️ After School channel not found! ID: {AFTER_SCHOOL_CHANNEL_ID}')
-        
-        # Verify private conversation category
-        if PRIVATE_CONVERSATION_CATEGORY_ID:
-            private_category = guild.get_channel(PRIVATE_CONVERSATION_CATEGORY_ID)
-            if private_category:
-                print(f'📁 Private Conversation Category: #{private_category.name} (ID: {private_category.id})')
-            else:
-                print(f'⚠️ Private conversation category not found! ID: {PRIVATE_CONVERSATION_CATEGORY_ID}')
-                print('   Please ensure setup program has run to create the category')
-        
-        # Verify bot command channel
-        if BOT_COMMAND_CHANNEL_ID:
-            bot_channel = guild.get_channel(BOT_COMMAND_CHANNEL_ID)
-            if bot_channel:
-                print(f'💬 Bot Command Channel: #{bot_channel.name} (ID: {BOT_COMMAND_CHANNEL_ID})')
-            else:
-                print(f'⚠️ Bot command channel not found! ID: {BOT_COMMAND_CHANNEL_ID}')
-        else:
-            print(f'⚠️ Bot command channel not configured!')
-        
-        # Verify log channel
-        if LOG_CHANNEL_ID:
-            log_channel = guild.get_channel(LOG_CHANNEL_ID)
-            if log_channel:
-                print(f'📋 Log Channel: #{log_channel.name} (ID: {LOG_CHANNEL_ID})')
-            else:
-                print(f'⚠️ Log channel not found! ID: {LOG_CHANNEL_ID}')
-        else:
-            print(f'⚠️ Log channel not configured! Notifications will be sent to admin DM')
-        
-        # Validate green check mark consistency
-        print("\n🔍 Verifying green check marks for registered users...")
-        await verify_green_check_consistency(guild, rules_channel)
-    
-    # Set bot status
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.watching,
-        name="for messages to forward"
-    ))
 
 async def verify_green_check_consistency(guild: discord.Guild, rules_channel: Optional[discord.TextChannel]) -> None:
     """
@@ -5859,14 +5600,8 @@ async def on_ready():
         # Validate green check mark consistency
         print("\n🔍 Checking registration status...")
         await verify_green_check_consistency(guild, rules_channel)
-    
-    # Set bot status
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.watching,
-        name="for messages to forward"
-    ))
 
-# =============================================================================
+# ============================================================================
 # ROLE MANAGEMENT COMMANDS
 # =============================================================================
 @bot_command.command(name="remove_role")
@@ -8164,8 +7899,6 @@ if __name__ == "__main__":
         print("   Private chats will not be created!")
         print("   Please ensure setup program has run to create the category")
     
-    run_bot_with_watchdog()
-
     # Start the bot
     try:
         bot.run(TOKEN)
