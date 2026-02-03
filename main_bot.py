@@ -25,6 +25,7 @@ import os
 import json
 import asyncio
 from typing import Dict, Optional, List, Tuple
+import pytz
 from datetime import datetime, timedelta, timezone
 import time
 import psutil
@@ -5442,9 +5443,8 @@ async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
 # =============================================================================
 # SYSTEM MONITOR CLASS (MODIFIED)
 # =============================================================================
-
 class SystemMonitor:
-    """System monitoring class for Raspberry Pi with enhanced hourly status checks."""
+    """System monitoring class for Raspberry Pi with CT-based hourly status checks."""
     
     def __init__(self, bot):
         self.bot = bot
@@ -5464,8 +5464,7 @@ class SystemMonitor:
         self.check_interval = 300  # 5 minutes (in seconds)
         self.last_alert_time = {}
         self.alert_cooldown = 3600  # 1 hour cooldown between alerts for same metric
-        self.last_hourly_report = 0  # Track when we last sent hourly report
-        self.report_count = 0  # Track number of reports sent
+        self.last_hourly_report_hour = None  # Track last hour when report was sent (in CT)
         
         # Performance tracking
         self.performance_history = {
@@ -5475,6 +5474,16 @@ class SystemMonitor:
             'registry_sizes': []
         }
         self.MAX_HISTORY = 144  # Store 24 hours of data (24 * 6 checks/hour)
+        
+        # Timezone setup
+        try:
+            # Try to use America/Chicago for Central Time (handles CST/CDT)
+            self.central_tz = pytz.timezone('America/Chicago')
+        except:
+            # Fallback to fixed offset if pytz not available
+            print("⚠️ pytz not available, using UTC-6 for Central Time")
+            # Use UTC-6 for CST (doesn't handle daylight saving)
+            self.central_tz = None
 
     def get_status_emoji(self, value, warning_threshold, critical_threshold, value_type="percent"):
         """Get appropriate emoji for status based on value and thresholds."""
@@ -5540,13 +5549,33 @@ class SystemMonitor:
             size_bytes /= 1024.0
         return f"{size_bytes:.1f} TB"
     
+    def get_central_time(self):
+        """Get current time in Central Time Zone."""
+        utc_now = datetime.now(timezone.utc)
+        
+        if self.central_tz:
+            # Convert UTC to Central Time
+            central_time = utc_now.astimezone(self.central_tz)
+            return central_time
+        else:
+            # Fallback: subtract 6 hours for CST (no daylight saving adjustment)
+            cst_offset = timedelta(hours=-6)
+            central_time = utc_now + cst_offset
+            return central_time
+    
     async def send_enhanced_hourly_report(self):
-        """Send enhanced hourly system status report to log channel."""
+        """Send enhanced hourly system status report to log channel at the top of each hour in CT."""
         try:
-            current_time = time.time()
+            # Get current time in Central Time
+            central_time = self.get_central_time()
+            current_hour = central_time.hour
             
-            # Check if at least 1 hour has passed since last report
-            if current_time - self.last_hourly_report < 3600:
+            # Check if we've already sent a report this hour
+            if self.last_hourly_report_hour == current_hour:
+                return
+            
+            # Only send at the top of the hour (minute 0-4 to account for task interval)
+            if central_time.minute > 4:
                 return
             
             guild = self.bot.get_guild(GUILD_ID)
@@ -5566,7 +5595,7 @@ class SystemMonitor:
             
             # Get uptime info
             system_uptime = self.get_system_uptime()
-            bot_uptime = self.get_bot_uptime(getattr(self.bot, 'start_time', current_time))
+            bot_uptime = self.get_bot_uptime(getattr(self.bot, 'start_time', time.time()))
             
             # Get network info
             network_info = self.get_network_info()
@@ -5590,7 +5619,7 @@ class SystemMonitor:
             # Create enhanced hourly status embed
             embed = discord.Embed(
                 title="📊 ENHANCED HOURLY SYSTEM STATUS",
-                description=f"**Time:** <t:{int(current_time)}:F>\n"
+                description=f"**Time (CT):** {central_time.strftime('%Y-%m-%d %I:%M %p')}\n"
                           f"**Bot:** {self.bot.user.name}\n"
                           f"**Overall Status:** {overall_status}",
                 color=self.get_status_color(overall_status),
@@ -5652,19 +5681,15 @@ class SystemMonitor:
             
             # Footer with thresholds
             footer_text = (
-                f"Report #{self.report_count} | "
-                f"CPU: ≥{self.cpu_temp_critical}°C | "
-                f"Mem: ≥{self.memory_critical}% | "
-                f"Disk: ≥{self.disk_critical}% | "
-                f"Next: <t:{int(current_time) + 3600}:R>"
+                f"Report for hour: {current_hour:02d}:00 CT | "
+                f"Next: {(current_hour + 1) % 24:02d}:00 CT"
             )
             embed.set_footer(text=footer_text)
             
             await log_channel.send(embed=embed)
-            self.last_hourly_report = current_time
-            self.report_count += 1
+            self.last_hourly_report_hour = current_hour
             
-            print(f"📊 Sent enhanced hourly system status report to log channel")
+            print(f"📊 Sent enhanced hourly system status report for {current_hour:02d}:00 CT")
             
         except Exception as e:
             print(f"❌ Error sending enhanced hourly status report: {e}")
@@ -6131,12 +6156,18 @@ class SystemMonitor:
 # =============================================================================
 # MONITORING TASK
 # =============================================================================
-@tasks.loop(seconds=300)  # Run every 5 minutes
+@tasks.loop(seconds=60)  # Run every minute to catch the top of each hour
 async def monitoring_task():
-    """Background task to check system metrics periodically."""
+    """Background task to check system metrics periodically and send hourly reports in CT."""
     global system_monitor
     if system_monitor:
-        await system_monitor.check_system_metrics()
+        # Check critical metrics every 5 minutes (using modulo)
+        current_time = time.time()
+        if int(current_time) % 300 < 60:  # Every 5 minutes
+            await system_monitor.check_system_metrics()
+        
+        # Check if it's time for hourly report (this uses CT internally)
+        await system_monitor.send_enhanced_hourly_report()
 
 @monitoring_task.before_loop
 async def before_monitoring_task():
@@ -6588,8 +6619,8 @@ async def on_ready():
         if not monitoring_task.is_running():
             try:
                 monitoring_task.start()
-                print('✅ System monitoring task started (every 5 minutes)')
-                print('   Hourly detailed reports will be sent to log channel')
+                print('✅ System monitoring task started (every 1 minute)')
+                print('   Hourly detailed reports will be sent to log channel at the top of each hour (CT)')
             except Exception as e:
                 print(f'⚠️ Failed to start monitoring task: {e}')
         
@@ -7223,6 +7254,49 @@ async def before_update_json_task():
     """Wait for bot to be ready before starting the task."""
     await bot.wait_until_ready()
     print("⏰ 24-hour JSON update task is waiting to start...")
+
+@bot_command.command(name="timezone_info")
+@bot_channel_only()
+async def chat_timezone_info(ctx):
+    """Display current timezone information for monitoring."""
+    global system_monitor
+    if not system_monitor:
+        await ctx.send("❌ System monitor not initialized.", ephemeral=True)
+        return
+    
+    utc_now = datetime.now(timezone.utc)
+    central_time = system_monitor.get_central_time()
+    
+    embed = discord.Embed(
+        title="⏰ Timezone Information",
+        description="System monitoring uses Central Time for hourly reports.",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="UTC Time", value=utc_now.strftime('%Y-%m-%d %H:%M:%S'), inline=True)
+    embed.add_field(name="Central Time", value=central_time.strftime('%Y-%m-%d %H:%M:%S'), inline=True)
+    embed.add_field(name="Current CT Hour", value=f"{central_time.hour:02d}:00", inline=True)
+    
+    if system_monitor.last_hourly_report_hour is not None:
+        embed.add_field(
+            name="Last Hourly Report",
+            value=f"Sent at {system_monitor.last_hourly_report_hour:02d}:00 CT",
+            inline=True
+        )
+    else:
+        embed.add_field(
+            name="Last Hourly Report",
+            value="No report sent yet",
+            inline=True
+        )
+    
+    if system_monitor.central_tz:
+        embed.add_field(name="Timezone Source", value="America/Chicago (pytz)", inline=True)
+    else:
+        embed.add_field(name="Timezone Source", value="UTC-6 (fallback, no DST)", inline=True)
+    
+    embed.set_footer(text="Reports sent at the top of each hour in Central Time")
+    await ctx.send(embed=embed, ephemeral=True)
 
 # =============================================================================
 # CHANNEL PERMISSION CONFIGURATION
