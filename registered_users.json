@@ -188,8 +188,8 @@
     "nickname": "Issachar Williams's Father",
     "gender": "father",
     "registered_at": "2026-01-15T23:12:45.107269+00:00",
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1468006432187093174,
     "roles": [
       "Family Member"
     ],
@@ -1031,8 +1031,8 @@
     "gender": "mother",
     "registered_at": "2026-01-21T23:10:56.570480+00:00",
     "programs": [],
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1468008761028509696,
     "roles": [
       "Family Member"
     ]
