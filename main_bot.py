@@ -2370,19 +2370,44 @@ async def on_message(message: discord.Message):
     
     # Handle monitored channel messages - ALLOW COMMANDS
     if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
-        # Check if this is a command that should be allowed
+        # Check if user should be exempt from the "No Typing in General Chat" rule
+        # Master Lee's Family, Instructor, and Admin are allowed to type freely
+        should_exempt = False
+        
+        # Check if user is admin
+        if message.author.id == ADMIN_USER_ID:
+            should_exempt = True
+        
+        # Check if user has Master Lee's Family role
+        if MASTER_LEE_FAMILY_ROLE_ID:
+            master_lee_family_role = message.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+            if master_lee_family_role and master_lee_family_role in message.author.roles:
+                should_exempt = True
+        
+        # Check if user has Instructor role
+        if INSTRUCTOR_ROLE_ID:
+            instructor_role = message.guild.get_role(INSTRUCTOR_ROLE_ID)
+            if instructor_role and instructor_role in message.author.roles:
+                should_exempt = True
+        
+        # If user is exempt, process commands and allow the message
+        if should_exempt:
+            await bot.process_commands(message)
+            return
+        
+        # Check if this is a command that should be allowed for non-exempt users
         if message.content.startswith('!private'):
             # Allow the command to be processed
             await bot.process_commands(message)
             # Note: The command itself will delete the message
             return
         else:
-            # Delete any non-command messages sent in general-chat
+            # Delete any non-command messages sent in general-chat by non-exempt users
             try:
                 await message.delete()
                 print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
                 
-                # Notify user via DM
+                # Notify user via DM (only for non-exempt users)
                 try:
                     dm_channel = await message.author.create_dm()
                     embed = discord.Embed(
