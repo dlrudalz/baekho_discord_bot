@@ -2370,44 +2370,49 @@ async def on_message(message: discord.Message):
     
     # Handle monitored channel messages - ALLOW COMMANDS
     if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
-        # Check if user should be exempt from the "No Typing in General Chat" rule
-        # Master Lee's Family, Instructor, and Admin are allowed to type freely
-        should_exempt = False
-        
-        # Check if user is admin
-        if message.author.id == ADMIN_USER_ID:
-            should_exempt = True
-        
-        # Check if user has Master Lee's Family role
-        if MASTER_LEE_FAMILY_ROLE_ID:
-            master_lee_family_role = message.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
-            if master_lee_family_role and master_lee_family_role in message.author.roles:
-                should_exempt = True
-        
-        # Check if user has Instructor role
-        if INSTRUCTOR_ROLE_ID:
-            instructor_role = message.guild.get_role(INSTRUCTOR_ROLE_ID)
-            if instructor_role and instructor_role in message.author.roles:
-                should_exempt = True
-        
-        # If user is exempt, process commands and allow the message
-        if should_exempt:
-            await bot.process_commands(message)
-            return
-        
-        # Check if this is a command that should be allowed for non-exempt users
+        # Check if this is a command that should be allowed
         if message.content.startswith('!private'):
             # Allow the command to be processed
             await bot.process_commands(message)
             # Note: The command itself will delete the message
             return
         else:
-            # Delete any non-command messages sent in general-chat by non-exempt users
+            # Delete any non-command messages sent in general-chat
+            
+            # Check if user has exempt roles
+            exempt_roles = []
+            
+            # Get Master Lee's Family role
+            master_lee_family_role = message.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+            if master_lee_family_role and master_lee_family_role in message.author.roles:
+                exempt_roles.append("Master Lee's Family")
+            
+            # Get Instructor role
+            instructor_role = message.guild.get_role(INSTRUCTOR_ROLE_ID)
+            if instructor_role and instructor_role in message.author.roles:
+                exempt_roles.append("Instructor")
+            
+            # Check if user is Admin
+            is_admin = message.author.id == ADMIN_USER_ID
+            
+            # If user has any exempt role or is admin, just delete the message without sending DM
+            if exempt_roles or is_admin:
+                try:
+                    await message.delete()
+                    if is_admin:
+                        print(f'🗑️ Deleted message from Admin {message.author.name} in #{message.channel.name} (no DM sent)')
+                    else:
+                        print(f'🗑️ Deleted message from {message.author.name} with roles: {exempt_roles} in #{message.channel.name} (no DM sent)')
+                except:
+                    pass
+                return
+            
+            # For regular users (no exempt roles), delete and send DM
             try:
                 await message.delete()
                 print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
                 
-                # Notify user via DM (only for non-exempt users)
+                # Notify user via DM
                 try:
                     dm_channel = await message.author.create_dm()
                     embed = discord.Embed(
@@ -3376,16 +3381,17 @@ async def chat_command(ctx):
     Only accessible in bot command channel by admin users.
     """
     embed = discord.Embed(
-        title="💬 **ADMIN BOT COMMANDS**",
+        title="💬 **COMPLETE BOT COMMAND LIST**",
         description="**All commands must be used in this channel only.**\n\n"
                    "Use `![command_name]`\n"
-                   "**Example:** `!view_user @user`\n",
+                   "**Example:** `!view_user @user`\n"
+                   "**Total Commands:** 48 commands available\n",
         color=discord.Color.blue()
     )
     
     # Section 1: REAL-TIME MONITORING
     embed.add_field(
-        name="📊 **REAL-TIME MONITORING**",
+        name="📊 **REAL-TIME MONITORING (3 commands)**",
         value=(
             "`active_private_chats` - Show all active private chats with activity status\n"
             "`active_chats` - Show active 1-on-1 conversations\n"
@@ -3396,7 +3402,7 @@ async def chat_command(ctx):
     
     # Section 2: USER MANAGEMENT
     embed.add_field(
-        name="👤 **USER MANAGEMENT**",
+        name="👤 **USER MANAGEMENT (8 commands)**",
         value=(
             "`view_user @user` - Complete user profile with all data\n"
             "`view_user_roles @user` - View JSON vs Discord role comparison\n"
@@ -3404,54 +3410,69 @@ async def chat_command(ctx):
             "`assign_role @user add/remove role` - Add/remove any role (national_team, demonstration_team, after_school, student, instructor, master_family)\n"
             "`fix_name @user new_name` - Fix user's registered name\n"
             "`remove_check @user` - Remove user's green check\n"
+            "`unregistered` - List all unregistered users in server\n"
+            "`force_json_sync @user` - Force JSON sync for specific user\n"
         ),
         inline=False
     )
     
     # Section 3: PRIVATE CHAT MANAGEMENT
     embed.add_field(
-        name="🔒 **PRIVATE CHAT MANAGEMENT**",
+        name="🔒 **PRIVATE CHAT MANAGEMENT (4 commands)**",
         value=(
             "`resend_delete_button #channel` - Fix delete button in channel\n"
+            "`reset_general_permissions` - Reset general-chat permissions\n"
+            "`private @user` - Create private chat from general-chat (admin/Master Lee's Family only)\n"
+            "`check_channel_permissions [#channel]` - Check channel permissions\n"
         ),
         inline=False
     )
     
     # Section 4: ROLE MANAGEMENT
     embed.add_field(
-        name="🎭 **ROLE MANAGEMENT**",
+        name="🎭 **ROLE MANAGEMENT (5 commands)**",
         value=(
             "`remove_role @user role_type` - Remove special role (instructor, master_family, both)\n"
+            "`apply_role_permissions` - Apply role permissions to all channels\n"
+            "`check_channel_permissions [#channel]` - Check channel permissions\n"
+            "`update_discord_roles` - Update Discord roles from JSON file (for ALL users)\n"
+            "`assign_role @user add/remove role` - Add/remove any role\n"
         ),
         inline=False
     )
     
     # Section 5: REGISTRATION & CONSISTENCY
     embed.add_field(
-        name="📝 **REGISTRATION & CONSISTENCY**",
+        name="📝 **REGISTRATION & CONSISTENCY (3 commands)**",
         value=(
             "`check_consistency` - Check registry/green check consistency\n"
             "`force_register` - Force start registration for yourself\n"
+            "`verify_json_roles @user` - Verify JSON role sync\n"
         ),
         inline=False
     )
     
     # Section 6: DATA MANAGEMENT
     embed.add_field(
-        name="💾 **DATA MANAGEMENT**",
+        name="💾 **DATA MANAGEMENT (10 commands)**",
         value=(
             "`view_json_data @user` - View raw JSON data for user\n"
             "`cleanup_json` - Clean orphaned JSON entries\n"
             "`migrate_json_structure` - Migrate JSON to new structure with backup\n"
             "`list_backups` - List all backup files\n"
             "`verify_json_structure` - Verify JSON structure\n"
+            "`sync_json_with_roles` - Sync JSON with Discord roles\n"
+            "`unregistered` - List all unregistered users\n"
+            "`fix_name @user new_name` - Fix user's registered name\n"
+            "`view_user_roles @user` - View JSON vs Discord role comparison\n"
+            "`update_json_roles` - Force immediate JSON sync\n"
         ),
         inline=False
     )
     
     # Section 7: SYSTEM & MAINTENANCE
     embed.add_field(
-        name="🛠️ **SYSTEM & MAINTENANCE**",
+        name="🛠️ **SYSTEM & MAINTENANCE (8 commands)**",
         value=(
             "`setup` - Setup rules message\n"
             "`setup_bot_channel` - Create bot command channel\n"
@@ -3459,46 +3480,79 @@ async def chat_command(ctx):
             "`clear_chats` - Clear active conversations\n"
             "`update_message_id ID` - Update rules message ID\n"
             "`clear_channel [#channel]` - Clear ALL messages in a channel\n"
+            "`cleanup_json` - Clean orphaned JSON entries\n"
+            "`migrate_json_structure` - Migrate JSON to new structure with backup\n"
         ),
         inline=False
     )
     
     # Section 8: JSON SYNCHRONIZATION
     embed.add_field(
-        name="🔄 **JSON SYNCHRONIZATION**",
+        name="🔄 **JSON SYNCHRONIZATION (8 commands)**",
         value=(
-            "`update_discord_roles` - Update Discord roles from JSON file (for ALL users)\n"
             "`update_json_roles` - Force immediate JSON sync\n"
             "`force_json_sync @user` - Force sync for specific user\n"
             "`json_task_status` - Show JSON task status\n"
             "`start_json_task` - Start JSON sync task\n"
             "`stop_json_task` - Stop JSON sync task\n"
             "`verify_json_roles @user` - Verify JSON role sync\n"
+            "`update_discord_roles` - Update Discord roles from JSON file\n"
+            "`sync_json_with_roles` - Sync JSON with Discord roles\n"
         ),
         inline=False
     )
     
-    # Section 9: TESTING & DEBUGGING
+    # Section 9: SYSTEM MONITORING
     embed.add_field(
-        name="🐛 **TESTING & DEBUGGING**",
+        name="📈 **SYSTEM MONITORING (9 commands)**",
+        value=(
+            "`system_status` - Show enhanced system status\n"
+            "`monitoring_config` - View monitoring thresholds and settings\n"
+            "`monitoring_status` - Show monitoring task status\n"
+            "`start_monitoring` - Start system monitoring\n"
+            "`stop_monitoring` - Stop system monitoring\n"
+            "`test_alert` - Test monitoring alert system\n"
+            "`update_monitoring_config setting value` - Update monitoring thresholds\n"
+            "`timezone_info` - Show timezone information for monitoring\n"
+            "`debug_ids` - Show all configuration IDs\n"
+        ),
+        inline=False
+    )
+    
+    # Section 10: TESTING & DEBUGGING
+    embed.add_field(
+        name="🐛 **TESTING & DEBUGGING (3 commands)**",
         value=(
             "`debug_ids` - Show all configuration IDs\n"
             "`check_message ID` - Check message reactions\n"
+            "`test_alert` - Test monitoring alert system\n"
         ),
         inline=False
     )
     
-    # Section 10: PUBLIC COMMANDS
+    # Section 11: PUBLIC COMMANDS
     embed.add_field(
-        name="🌐 **PUBLIC COMMANDS**",
+        name="🌐 **PUBLIC COMMANDS (1 command)**",
         value=(
             "`!force_register` - Force start registration for yourself\n"
         ),
         inline=False
     )
     
+    # Section 12: COMMAND SUMMARY
+    command_summary = (
+        "**Command Categories:** 11 categories\n"
+        "**Total Commands:** 48 commands\n"
+        "**Most Commands:** Data Management (10 commands)\n"
+        "**Least Commands:** Public Commands (1 command)\n\n"
+        "**Quick Reference:**\n"
+        "• Use `!chat` to see this menu\n"
+        "• Commands only work in this channel\n"
+        "• Admin and Master Lee's Family have special access\n"
+    )
+    
     embed.set_footer(
-        text="🚀 Bot v2.0.0 | Commands only work in bot-commands channel | Prefix: !"
+        text="🚀 Bot v2.0.0 | 48 Total Commands | Prefix: ! | Commands only work in bot-commands channel"
     )
     
     await ctx.send(embed=embed)
@@ -3920,6 +3974,364 @@ async def chat_view_json_data(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed, ephemeral=True)
 
+@bot.command(name="sync_json_with_roles")
+@bot_channel_only()
+async def chat_sync_json_with_roles(ctx):
+    """
+    Synchronize registered_users.json with current Discord roles.
+    
+    This command:
+    1. Checks each user in Discord server
+    2. Updates JSON file with current roles (if user has tracked roles)
+    3. Removes users from JSON if they don't have any tracked roles (unregistered)
+    4. Keeps the JSON file updated with Discord's current state
+    """
+    guild = ctx.guild
+    
+    # Show starting message
+    embed = discord.Embed(
+        title="🔄 Syncing JSON with Discord Roles",
+        description="Starting synchronization process...\n\n"
+                   "**What this does:**\n"
+                   "1. Checks all server members\n"
+                   "2. Updates JSON with current roles\n"
+                   "3. Removes unregistered users from JSON\n"
+                   "4. Preserves registration data for registered users\n\n"
+                   "This may take a moment.",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed)
+    
+    try:
+        # Track statistics
+        stats = {
+            "total_users_in_server": 0,
+            "users_in_json_before": len(registered_users),
+            "users_updated": 0,
+            "users_removed_from_json": 0,
+            "users_added_to_json": 0,
+            "users_kept_in_json": 0,
+            "errors": []
+        }
+        
+        # Get all non-bot members in the server
+        all_members = [member for member in guild.members if not member.bot]
+        stats["total_users_in_server"] = len(all_members)
+        
+        print(f"\n🔄 Starting JSON synchronization with Discord roles...")
+        print(f"   Total server members: {len(all_members)}")
+        print(f"   Users in JSON before: {len(registered_users)}")
+        
+        # Create a set to track which users should be in JSON
+        users_to_keep_in_json = set()
+        
+        # Define which roles should be tracked/stored in JSON
+        tracked_roles = {
+            FAMILY_ROLE_ID: "Family Member",
+            STUDENT_ROLE_ID: "Student",
+            INSTRUCTOR_ROLE_ID: "Instructor",
+            MASTER_LEE_FAMILY_ROLE_ID: "Master Lee's Family",
+            NATIONAL_TEAM_ROLE_ID: "National Team",
+            DEMONSTRATION_TEAM_ROLE_ID: "Demonstration Team",
+            AFTER_SCHOOL_ROLE_ID: "After School"
+        }
+        
+        # Process each member in the server
+        for member in all_members:
+            try:
+                user_id_str = str(member.id)
+                
+                # Special case: Admin user should always be in JSON
+                if member.id == ADMIN_USER_ID:
+                    users_to_keep_in_json.add(user_id_str)
+                    
+                    # Update admin user in JSON
+                    if user_id_str not in registered_users:
+                        registered_users[user_id_str] = {
+                            'child_name': 'Admin User',
+                            'role': 'Admin',
+                            'role_display': '👑 Server Admin',
+                            'nickname': member.display_name,
+                            'gender': 'admin',
+                            'programs': [],
+                            'registered_at': discord.utils.utcnow().isoformat(),
+                            'has_active_private_chat': False,
+                            'private_chat_channel_id': None,
+                            'roles': ['Admin'],
+                            'admin_user': True,
+                            'auto_added': True
+                        }
+                        stats["users_added_to_json"] += 1
+                        print(f"✅ Added admin to JSON: {member.name}")
+                    else:
+                        # Ensure admin has Admin role in JSON
+                        if 'Admin' not in registered_users[user_id_str].get('roles', []):
+                            registered_users[user_id_str]['roles'] = registered_users[user_id_str].get('roles', []) + ['Admin']
+                            registered_users[user_id_str]['admin_user'] = True
+                            stats["users_updated"] += 1
+                            print(f"✅ Updated admin roles in JSON: {member.name}")
+                        else:
+                            stats["users_kept_in_json"] += 1
+                    
+                    continue
+                
+                # Check if user has any of the tracked roles
+                has_tracked_role = False
+                current_roles_in_discord = []
+                
+                for role_id, role_name in tracked_roles.items():
+                    if role_id and discord.utils.get(member.roles, id=role_id):
+                        has_tracked_role = True
+                        current_roles_in_discord.append(role_name)
+                
+                # Also check for special cases that should be tracked:
+                # 1. Users with Family Member role
+                # 2. Users with Student role  
+                # 3. Users with Instructor role
+                # 4. Users with Master Lee's Family role
+                # 5. Users with any program roles (National Team, Demonstration Team, After School)
+                
+                # If user has no tracked roles, they are considered unregistered
+                if not has_tracked_role:
+                    # Check if they're in JSON - if yes, mark for removal
+                    if user_id_str in registered_users:
+                        # But first, check if they have any other role that indicates registration
+                        # Look for registration-related roles in JSON
+                        stored_roles = registered_users[user_id_str].get('roles', [])
+                        
+                        # If they have no roles in JSON either, mark for removal
+                        if not stored_roles or all(role == 'Unknown' for role in stored_roles):
+                            # This user will be removed from JSON below
+                            pass
+                        else:
+                            # They have roles in JSON but not in Discord - keep them for now
+                            users_to_keep_in_json.add(user_id_str)
+                            stats["users_kept_in_json"] += 1
+                    continue
+                
+                # User has tracked roles - they should be in JSON
+                users_to_keep_in_json.add(user_id_str)
+                
+                # Update programs based on roles
+                current_programs = []
+                if NATIONAL_TEAM_ROLE_ID and discord.utils.get(member.roles, id=NATIONAL_TEAM_ROLE_ID):
+                    current_programs.append("national")
+                if DEMONSTRATION_TEAM_ROLE_ID and discord.utils.get(member.roles, id=DEMONSTRATION_TEAM_ROLE_ID):
+                    current_programs.append("demonstration")
+                if AFTER_SCHOOL_ROLE_ID and discord.utils.get(member.roles, id=AFTER_SCHOOL_ROLE_ID):
+                    current_programs.append("after_school")
+                
+                # Check if user already exists in JSON
+                if user_id_str in registered_users:
+                    # User exists in JSON - update their roles and programs
+                    old_roles = registered_users[user_id_str].get('roles', [])
+                    old_programs = registered_users[user_id_str].get('programs', [])
+                    
+                    # Check if roles or programs have changed
+                    if (sorted(old_roles) != sorted(current_roles_in_discord) or 
+                        sorted(old_programs) != sorted(current_programs)):
+                        
+                        registered_users[user_id_str]['roles'] = current_roles_in_discord
+                        registered_users[user_id_str]['programs'] = current_programs
+                        
+                        # Update nickname if available
+                        if member.display_name and member.display_name != member.name:
+                            registered_users[user_id_str]['nickname'] = member.display_name
+                        
+                        stats["users_updated"] += 1
+                        print(f"📝 Updated user in JSON: {member.name} - Roles: {current_roles_in_discord}")
+                    else:
+                        stats["users_kept_in_json"] += 1
+                
+                else:
+                    # User doesn't exist in JSON - create new entry
+                    # Try to determine registration info based on roles
+                    child_name = member.display_name
+                    role_display = "Unknown"
+                    role_gender = "unknown"
+                    
+                    # Try to infer registration type from roles
+                    if STUDENT_ROLE_ID and discord.utils.get(member.roles, id=STUDENT_ROLE_ID):
+                        role_display = "🎓 Student"
+                        role_gender = "student"
+                    elif FAMILY_ROLE_ID and discord.utils.get(member.roles, id=FAMILY_ROLE_ID):
+                        # Check if we can infer parent/grandparent from nickname
+                        nickname = member.display_name
+                        if "'s Mother" in nickname:
+                            role_display = "👩 Mother"
+                            role_gender = "mother"
+                            child_name = nickname.replace("'s Mother", "")
+                        elif "'s Father" in nickname:
+                            role_display = "👨 Father"
+                            role_gender = "father"
+                            child_name = nickname.replace("'s Father", "")
+                        elif "'s Grandmother" in nickname:
+                            role_display = "👵 Grandmother"
+                            role_gender = "grandmother"
+                            child_name = nickname.replace("'s Grandmother", "")
+                        elif "'s Grandfather" in nickname:
+                            role_display = "👴 Grandfather"
+                            role_gender = "grandfather"
+                            child_name = nickname.replace("'s Grandfather", "")
+                        else:
+                            role_display = "👤 Family Member"
+                            role_gender = "family_member"
+                    elif INSTRUCTOR_ROLE_ID and discord.utils.get(member.roles, id=INSTRUCTOR_ROLE_ID):
+                        role_display = "👨‍🏫 Instructor"
+                        role_gender = "instructor"
+                    elif MASTER_LEE_FAMILY_ROLE_ID and discord.utils.get(member.roles, id=MASTER_LEE_FAMILY_ROLE_ID):
+                        role_display = "👑 Master Lee's Family"
+                        role_gender = "master_family"
+                    
+                    # Create new JSON entry
+                    registered_users[user_id_str] = {
+                        'child_name': child_name,
+                        'role': role_display.replace("👩 ", "").replace("👨 ", "").replace("👵 ", "").replace("👴 ", "").replace("🎓 ", "").replace("👨‍🏫 ", "").replace("👑 ", "").replace("👤 ", ""),
+                        'role_display': role_display,
+                        'nickname': member.display_name,
+                        'gender': role_gender,
+                        'programs': current_programs,
+                        'registered_at': discord.utils.utcnow().isoformat(),
+                        'has_active_private_chat': False,
+                        'private_chat_channel_id': None,
+                        'roles': current_roles_in_discord,
+                        'auto_added_from_sync': True,
+                        'synced_at': discord.utils.utcnow().isoformat()
+                    }
+                    
+                    stats["users_added_to_json"] += 1
+                    print(f"✅ Added user to JSON: {member.name} - Roles: {current_roles_in_discord}")
+                
+            except Exception as e:
+                error_msg = f"Error processing {member.name} ({member.id}): {str(e)}"
+                stats["errors"].append(error_msg)
+                print(f"❌ {error_msg}")
+        
+        # Now remove users from JSON that shouldn't be there
+        users_to_remove = []
+        for user_id_str in list(registered_users.keys()):
+            if user_id_str not in users_to_keep_in_json:
+                # Don't remove admin
+                if user_id_str == str(ADMIN_USER_ID):
+                    continue
+                    
+                users_to_remove.append({
+                    'id': user_id_str,
+                    'name': registered_users[user_id_str].get('child_name', 'Unknown'),
+                    'roles': registered_users[user_id_str].get('roles', [])
+                })
+                del registered_users[user_id_str]
+        
+        stats["users_removed_from_json"] = len(users_to_remove)
+        stats["users_in_json_after"] = len(registered_users)
+        
+        # Save the updated JSON
+        save_registered_users(registered_users)
+        
+        # Create detailed results embed
+        embed = discord.Embed(
+            title="✅ JSON Synchronization Complete",
+            description="The registered_users.json file has been synchronized with current Discord roles.",
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Add statistics
+        embed.add_field(
+            name="📊 Server Statistics",
+            value=(
+                f"• **Total server members:** {stats['total_users_in_server']}\n"
+                f"• **Users in JSON before:** {stats['users_in_json_before']}\n"
+                f"• **Users in JSON after:** {stats['users_in_json_after']}"
+            ),
+            inline=False
+        )
+        
+        # Add changes made
+        embed.add_field(
+            name="🔄 Changes Made",
+            value=(
+                f"• **Users added to JSON:** {stats['users_added_to_json']}\n"
+                f"• **Users updated in JSON:** {stats['users_updated']}\n"
+                f"• **Users kept in JSON:** {stats['users_kept_in_json']}\n"
+                f"• **Users removed from JSON:** {stats['users_removed_from_json']}"
+            ),
+            inline=False
+        )
+        
+        # Show removed users (if any)
+        if users_to_remove:
+            removed_list = []
+            for i, user in enumerate(users_to_remove[:5], 1):
+                removed_list.append(f"{i}. {user['name']} (ID: {user['id']})")
+            
+            embed.add_field(
+                name=f"🗑️ Users Removed from JSON ({len(users_to_remove)} total)",
+                value="\n".join(removed_list),
+                inline=False
+            )
+            
+            if len(users_to_remove) > 5:
+                embed.add_field(
+                    name="ℹ️ Note",
+                    value=f"... and {len(users_to_remove) - 5} more users removed",
+                    inline=False
+                )
+        
+        # Show errors (if any)
+        if stats["errors"]:
+            error_list = "\n".join(stats["errors"][:3])
+            if len(stats["errors"]) > 3:
+                error_list += f"\n... and {len(stats['errors']) - 3} more errors"
+            
+            embed.add_field(
+                name="⚠️ Errors Encountered",
+                value=error_list,
+                inline=False
+            )
+        
+        # Add summary
+        if stats["users_removed_from_json"] == 0 and stats["users_added_to_json"] == 0 and stats["users_updated"] == 0:
+            embed.add_field(
+                name="✅ No Changes Needed",
+                value="JSON file was already synchronized with Discord roles.",
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Command executed by {ctx.author.name}")
+        
+        await ctx.send(embed=embed)
+        
+        # Also log to log channel
+        log_embed = discord.Embed(
+            title="🔄 JSON Synchronization Executed",
+            description=f"**Users in JSON:** {stats['users_in_json_after']}\n"
+                       f"**Added:** {stats['users_added_to_json']}\n"
+                       f"**Updated:** {stats['users_updated']}\n"
+                       f"**Removed:** {stats['users_removed_from_json']}\n"
+                       f"**By:** {ctx.author.mention}",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        await send_to_log_channel(guild, "", log_embed)
+        
+        print(f"\n✅ JSON synchronization complete!")
+        print(f"   Added: {stats['users_added_to_json']}")
+        print(f"   Updated: {stats['users_updated']}")
+        print(f"   Removed: {stats['users_removed_from_json']}")
+        print(f"   Total in JSON: {len(registered_users)}")
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ JSON Synchronization Failed",
+            description=f"Error: {str(e)}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        print(f"❌ Error in sync_json_with_roles: {e}")
+        import traceback
+        traceback.print_exc()
+
 @bot.command(name="update_discord_roles")
 @bot_channel_only()
 async def chat_update_roles_from_json(ctx):
@@ -4074,6 +4486,71 @@ async def chat_update_roles_from_json(ctx):
         timestamp=datetime.now(timezone.utc)
     )
     await send_to_log_channel(guild, "", log_embed)
+    
+@bot.command(name="unregistered")
+@bot_channel_only()
+async def chat_unregistered(ctx):
+    """
+    Simple command to list all unregistered users.
+    Just shows names and IDs.
+    """
+    guild = ctx.guild
+    
+    # Get all server members (excluding bots)
+    all_members = [member for member in guild.members if not member.bot]
+    
+    # Find unregistered users
+    unregistered_users = []
+    for member in all_members:
+        user_id_str = str(member.id)
+        
+        # Skip if already in JSON
+        if user_id_str in registered_users:
+            continue
+        
+        # Skip exempt users
+        master_lee_family_role = guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        is_master_lee_family = master_lee_family_role and master_lee_family_role in member.roles
+        is_admin = member.id == ADMIN_USER_ID
+        instructor_role = guild.get_role(INSTRUCTOR_ROLE_ID)
+        is_instructor = instructor_role and instructor_role in member.roles
+        
+        if is_master_lee_family or is_admin or is_instructor:
+            continue
+        
+        unregistered_users.append(member)
+    
+    if not unregistered_users:
+        await ctx.send("✅ **All users are registered!** Every user in the server is either registered in the JSON file or is exempt (Admin/Master Lee's Family/Instructor).")
+        return
+    
+    # Sort alphabetically
+    unregistered_users.sort(key=lambda x: x.name.lower())
+    
+    # Create message
+    message = f"## 🔴 Unregistered Users ({len(unregistered_users)} total)\n"
+    message += "These users are in the server but NOT in the JSON registry:\n\n"
+    
+    for i, member in enumerate(unregistered_users, 1):
+        # Get user roles for context
+        member_roles = [role.name for role in member.roles if role.name != "@everyone"]
+        roles_text = f" - {', '.join(member_roles[:2])}" if member_roles else ""
+        if len(member_roles) > 2:
+            roles_text = f" - {', '.join(member_roles[:2])} +{len(member_roles)-2} more"
+        
+        message += f"{i}. **{member.name}** (ID: `{member.id}`){roles_text}\n"
+    
+    # Add summary
+    message += f"\n**Summary:** {len(unregistered_users)} unregistered out of {len(all_members)} total server members."
+    
+    # Send message (Discord has 2000 char limit, so split if needed)
+    if len(message) <= 2000:
+        await ctx.send(message)
+    else:
+        # Split into chunks
+        chunks = [message[i:i+2000] for i in range(0, len(message), 2000)]
+        for chunk in chunks:
+            await ctx.send(chunk)
 
 @bot.command(name="assign_role")
 @bot_channel_only()
@@ -4816,96 +5293,6 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
 # =============================================================================
 # AUTO-PIN BOT COMMAND ON STARTUP
 # =============================================================================
-@bot.command(name="admin_help")
-@bot_channel_only()
-async def chat_help(ctx):
-    """Show the command menu (same as !bot_command menu)."""
-    await chat_menu(ctx)
-
-# Add a quick command to show the menu
-@bot.command(name="commands")
-@bot_channel_only()
-async def quick_commands(ctx):
-    """Quick command to show the menu (alternative to !bot_command menu)."""
-    await chat_menu(ctx)
-
-# Update the auto_pin_bot_command function to include the menu
-async def auto_setup_command_chat():
-    """
-    Automatically send and pin the bot command help message on startup.
-    Now includes dropdown menu option.
-    """
-    guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        print("❌ Guild not found for auto-pin")
-        return
-    
-    bot_channel = guild.get_channel(BOT_COMMAND_CHANNEL_ID)
-    if not bot_channel:
-        print("❌ Bot command channel not found for auto-pin")
-        return
-    
-    try:
-        # Check if bot command message already exists and is pinned
-        pinned_messages = await bot_channel.pins()
-        bot_command_exists = False
-        
-        for pinned_msg in pinned_messages:
-            # Check if this is a bot command message from our bot
-            if pinned_msg.author == bot.user and pinned_msg.embeds:
-                for embed in pinned_msg.embeds:
-                    if embed.title and "ADMIN BOT COMMANDS" in embed.title:
-                        bot_command_exists = True
-                        print(f"✅ Bot command message already pinned: {pinned_msg.id}")
-                        break
-            
-            if bot_command_exists:
-                break
-        
-        # If no existing bot command message, create and pin one
-        if not bot_command_exists:
-            print("📌 Creating and pinning bot command message with dropdown...")
-            
-            # Create the bot command embed using the updated function
-            embed = create_bot_commands_embed()
-            
-            # Create view with dropdown
-            view = CommandDropdownView()
-            
-            message = await bot_channel.send(embed=embed, view=view)
-            
-            # Pin the message
-            await message.pin(reason="Auto-pinned bot command on startup")
-            print(f"✅ Bot command message created and pinned: {message.id}")
-            
-            # Also log to log channel
-            log_embed = discord.Embed(
-                title="📌 Bot Command Auto-Pinned",
-                description=f"Bot command help message with dropdown has been auto-pinned in {bot_channel.mention}",
-                color=discord.Color.green(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            await send_to_log_channel(guild, "", log_embed)
-        else:
-            # Update existing pinned message to include dropdown
-            print("🔄 Updating existing pinned message with dropdown...")
-            for pinned_msg in pinned_messages:
-                if pinned_msg.author == bot.user and pinned_msg.embeds:
-                    for embed in pinned_msg.embeds:
-                        if embed.title and "ADMIN BOT COMMANDS" in embed.title:
-                            # Create view with dropdown
-                            view = CommandDropdownView()
-                            
-                            # Update the message
-                            await pinned_msg.edit(view=view)
-                            print(f"✅ Updated existing pinned message with dropdown: {pinned_msg.id}")
-                            break
-    
-    except Exception as e:
-        print(f"❌ Error auto-pinning bot command: {e}")
-        import traceback
-        traceback.print_exc()
-
 def create_bot_commands_embed():
     """Create the bot commands embed for auto-pinning."""
     embed = discord.Embed(
@@ -4925,6 +5312,7 @@ def create_bot_commands_embed():
             "`register_stats` - Show registration statistics\n"
             "`system_status` - Show Raspberry Pi system status\n"
             "`monitoring_config` - View monitoring thresholds and settings\n"
+            "`timezone_info` - Show timezone information for monitoring\n"
         ),
         inline=False
     )
@@ -4936,10 +5324,11 @@ def create_bot_commands_embed():
             "`view_user @user` - Complete user profile with all data\n"
             "`view_user_roles @user` - View JSON vs Discord role comparison\n"
             "`send_dm @user message` - Send direct message to user\n"
-            "`assign_role @user add/remove role` - Add/remove any role (national_team, demonstration_team, after_school, student, instructor, master_family)\n"
+            "`assign_role @user add/remove role` - Add/remove any role\n"
             "`fix_name @user new_name` - Fix user's registered name\n"
             "`remove_check @user` - Remove user's green check\n"
             "`update_discord_roles` - Update Discord roles from JSON file\n"
+            "`unregistered` - List all unregistered users in server\n"
         ),
         inline=False
     )
@@ -4958,7 +5347,7 @@ def create_bot_commands_embed():
     embed.add_field(
         name="🎭 **ROLE MANAGEMENT**",
         value=(
-            "`remove_role @user role_type` - Remove special role (instructor, master_family, both)\n"
+            "`remove_role @user role_type` - Remove special role\n"
             "`apply_role_permissions` - Apply role permissions to all channels\n"
             "`check_channel_permissions [channel]` - Check channel permissions\n"
         ),
@@ -4984,6 +5373,7 @@ def create_bot_commands_embed():
             "`migrate_json_structure` - Migrate JSON to new structure with backup\n"
             "`list_backups` - List all backup files\n"
             "`verify_json_structure` - Verify JSON structure\n"
+            "`sync_json_with_roles` - Sync JSON with Discord roles\n"
         ),
         inline=False
     )
@@ -5664,7 +6054,7 @@ class SystemMonitor:
             
             # Create enhanced hourly status embed
             embed = discord.Embed(
-                title="📊 ENHANCED HOURLY SYSTEM STATUS",
+                title="📊 HOURLY SYSTEM STATUS",
                 description=f"**Time (CT):** {central_time.strftime('%Y-%m-%d %I:%M %p')}\n"
                           f"**Bot:** {self.bot.user.name}\n"
                           f"**Overall Status:** {overall_status}",
@@ -6646,7 +7036,6 @@ async def on_ready():
         # AUTO-SETUP CHANNELS ON STARTUP
         print("\n🔄 Auto-setting up channels on startup...")
         await auto_setup_welcome_channel()  # Setup welcome channel (rules message)
-        await auto_setup_command_chat()     # Setup bot command channel
         await auto_setup_general_chat_button()  # Setup general-chat button
         
         # ========================================================
@@ -7854,265 +8243,6 @@ ROLE_IDS = {
     "Demonstration Team": DEMONSTRATION_TEAM_ROLE_ID,
     "After School": AFTER_SCHOOL_ROLE_ID
 }
-
-# =============================================================================
-# COMMAND DROPDOWN MENU SYSTEM
-# =============================================================================
-class CommandDropdown(discord.ui.Select):
-    """Dropdown menu for all bot commands (flat list)."""
-    
-    def __init__(self):
-        # Create a flat list of all commands without categories
-        options = []
-        
-        # Get all available commands
-        commands_list = [
-            ("📊", "active_private_chats", "Show all active private chats"),
-            ("📊", "active_chats", "Show active 1-on-1 conversations"),
-            ("📊", "register_stats", "Show registration statistics"),
-            ("📊", "system_status", "Show Raspberry Pi system status"),
-            ("📊", "monitoring_config", "View monitoring thresholds"),
-            
-            ("👤", "view_user", "Complete user profile with all data"),
-            ("👤", "view_user_roles", "View JSON vs Discord role comparison"),
-            ("👤", "send_dm", "Send direct message to user"),
-            ("👤", "assign_role", "Add/remove any role"),
-            ("👤", "fix_name", "Fix user's registered name"),
-            ("👤", "remove_check", "Remove user's green check"),
-            ("👤", "update_discord_roles", "Update Discord roles from JSON"),
-            
-            ("🔒", "resend_delete_button", "Fix delete button in channel"),
-            ("🔒", "reset_general_permissions", "Reset general-chat permissions"),
-            
-            ("🎭", "remove_role", "Remove special role"),
-            ("🎭", "apply_role_permissions", "Apply role permissions to channels"),
-            ("🎭", "check_channel_permissions", "Check channel permissions"),
-            
-            ("📝", "check_consistency", "Check registry consistency"),
-            ("📝", "force_register", "Force start registration"),
-            
-            ("💾", "view_json_data", "View raw JSON data for user"),
-            ("💾", "cleanup_json", "Clean orphaned JSON entries"),
-            ("💾", "migrate_json_structure", "Migrate JSON to new structure"),
-            ("💾", "list_backups", "List all backup files"),
-            ("💾", "verify_json_structure", "Verify JSON structure"),
-            
-            ("🛠️", "setup", "Setup rules message"),
-            ("🛠️", "setup_bot_channel", "Create bot command channel"),
-            ("🛠️", "setup_log_channel", "Create log channel"),
-            ("🛠️", "clear_chats", "Clear active conversations"),
-            ("🛠️", "update_message_id", "Update rules message ID"),
-            ("🛠️", "clear_channel", "Clear ALL messages in channel"),
-            
-            ("🔄", "update_json_roles", "Force immediate JSON sync"),
-            ("🔄", "force_json_sync", "Force sync for specific user"),
-            ("🔄", "json_task_status", "Show JSON task status"),
-            ("🔄", "start_json_task", "Start JSON sync task"),
-            ("🔄", "stop_json_task", "Stop JSON sync task"),
-            ("🔄", "verify_json_roles", "Verify JSON role sync"),
-            
-            ("📈", "monitoring_status", "Show monitoring task status"),
-            ("📈", "start_monitoring", "Start system monitoring"),
-            ("📈", "stop_monitoring", "Stop system monitoring"),
-            ("📈", "test_alert", "Test monitoring alert system"),
-            ("📈", "update_monitoring_config", "Update thresholds"),
-            
-            ("🐛", "debug_ids", "Show all configuration IDs"),
-            ("🐛", "check_message", "Check message reactions"),
-        ]
-        
-        # Add all commands to dropdown (max 25 - Discord limit)
-        for emoji, command, description in commands_list[:25]:  # Discord limit
-            options.append(
-                discord.SelectOption(
-                    label=command,
-                    description=description[:100],  # Truncate to 100 chars
-                    emoji=emoji
-                )
-            )
-        
-        super().__init__(
-            placeholder="🎯 Select a command to copy...",
-            options=options,
-            min_values=1,
-            max_values=1
-        )
-    
-    async def callback(self, interaction: discord.Interaction):
-        """Handle dropdown selection - show command to copy."""
-        if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("❌ Only admin can use this menu.", ephemeral=True)
-            return
-        
-        selected_command = self.values[0]
-        
-        # Get the correct command format based on the selected command
-        commands_dict = {
-            "active_private_chats": ("!active_private_chats", "Show all active private chats with activity status"),
-            "active_chats": ("!active_chats", "Show active 1-on-1 conversations"),
-            "register_stats": ("!register_stats", "Show registration statistics"),
-            "system_status": ("!system_status", "Show Raspberry Pi system status"),
-            "monitoring_config": ("!monitoring_config", "View monitoring thresholds and settings"),
-            
-            "view_user": ("!view_user @user", "Complete user profile with all data"),
-            "view_user_roles": ("!view_user_roles @user", "View JSON vs Discord role comparison"),
-            "send_dm": ("!send_dm @user \"message\"", "Send direct message to user"),
-            "assign_role": ("!assign_role @user add/remove role_name", "Add/remove any role"),
-            "fix_name": ("!fix_name @user \"new name\"", "Fix user's registered name"),
-            "remove_check": ("!remove_check @user", "Remove user's green check"),
-            "update_discord_roles": ("!update_discord_roles", "Update Discord roles from JSON file"),
-            
-            "resend_delete_button": ("!resend_delete_button #channel", "Fix delete button in channel"),
-            "reset_general_permissions": ("!reset_general_permissions", "Reset general-chat permissions"),
-            
-            "remove_role": ("!remove_role @user role_type", "Remove special role (instructor, master_family, both)"),
-            "apply_role_permissions": ("!apply_role_permissions", "Apply role permissions to all channels"),
-            "check_channel_permissions": ("!check_channel_permissions [channel]", "Check channel permissions"),
-            
-            "check_consistency": ("!check_consistency", "Check registry/green check consistency"),
-            "force_register": ("!force_register", "Force start registration for yourself"),
-            
-            "view_json_data": ("!view_json_data @user", "View raw JSON data for user"),
-            "cleanup_json": ("!cleanup_json", "Clean orphaned JSON entries"),
-            "migrate_json_structure": ("!migrate_json_structure", "Migrate JSON to new structure with backup"),
-            "list_backups": ("!list_backups", "List all backup files"),
-            "verify_json_structure": ("!verify_json_structure", "Verify JSON structure"),
-            
-            "setup": ("!setup", "Setup rules message"),
-            "setup_bot_channel": ("!setup_bot_channel", "Create bot command channel"),
-            "setup_log_channel": ("!setup_log_channel", "Create log channel"),
-            "clear_chats": ("!clear_chats", "Clear active conversations"),
-            "update_message_id": ("!update_message_id MESSAGE_ID", "Update rules message ID"),
-            "clear_channel": ("!clear_channel [#channel]", "Clear ALL messages in a channel"),
-            
-            "update_json_roles": ("!update_json_roles", "Force immediate JSON sync"),
-            "force_json_sync": ("!force_json_sync @user", "Force sync for specific user"),
-            "json_task_status": ("!json_task_status", "Show JSON task status"),
-            "start_json_task": ("!start_json_task", "Start JSON sync task"),
-            "stop_json_task": ("!stop_json_task", "Stop JSON sync task"),
-            "verify_json_roles": ("!verify_json_roles @user", "Verify JSON role sync"),
-            
-            "monitoring_status": ("!monitoring_status", "Show monitoring task status"),
-            "start_monitoring": ("!start_monitoring", "Start system monitoring"),
-            "stop_monitoring": ("!stop_monitoring", "Stop system monitoring"),
-            "test_alert": ("!test_alert", "Test monitoring alert system"),
-            "update_monitoring_config": ("!update_monitoring_config setting value", "Update monitoring thresholds"),
-            
-            "debug_ids": ("!debug_ids", "Show all configuration IDs"),
-            "check_message": ("!check_message MESSAGE_ID", "Check message reactions"),
-        }
-        
-        # Get command details
-        if selected_command in commands_dict:
-            command_text, description = commands_dict[selected_command]
-            
-            # Create embed with the command to copy
-            embed = discord.Embed(
-                title=f"📋 Command: {selected_command}",
-                description=f"**Click the button below to copy this command:**",
-                color=discord.Color.blue()
-            )
-            
-            # Add command code block
-            embed.add_field(
-                name="Command to Copy:",
-                value=f"```{command_text}```",
-                inline=False
-            )
-            
-            embed.add_field(
-                name="Description:",
-                value=description,
-                inline=False
-            )
-            
-            embed.add_field(
-                name="Usage Notes:",
-                value=f"• **Channel:** This command only works in <#{BOT_COMMAND_CHANNEL_ID}>\n"
-                      f"• **Replace placeholders** (@user, #channel, MESSAGE_ID, etc.) with actual values\n"
-                      f"• **Use quotes** for messages with spaces\n"
-                      f"• **Syntax:** Follow the format exactly as shown above",
-                inline=False
-            )
-            
-            # Create view with copy button
-            view = discord.ui.View(timeout=300)
-            
-            # Add back button
-            back_button = discord.ui.Button(
-                label="⬅️ Back to Menu",
-                style=discord.ButtonStyle.secondary,
-                emoji="⬅️"
-            )
-            
-            async def back_button_callback(interaction: discord.Interaction):
-                # Recreate the menu view
-                new_view = CommandDropdownView()
-                await interaction.response.edit_message(view=new_view)
-            
-            back_button.callback = back_button_callback
-            view.add_item(back_button)
-            
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                f"❌ Command '{selected_command}' not found in database.",
-                ephemeral=True
-            )
-
-
-class CommandDropdownView(discord.ui.View):
-    """View containing the command dropdown menu."""
-    
-    def __init__(self):
-        super().__init__(timeout=300)  # 5 minute timeout
-        self.add_item(CommandDropdown())
-        
-    @discord.ui.button(label="📋 Show All Commands List", style=discord.ButtonStyle.secondary, row=1)
-    async def show_all_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Show the full command list in an embed."""
-        if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("❌ Only admin can use this button.", ephemeral=True)
-            return
-        
-        # Show the full command list using your existing chat_command function
-        await chat_command(interaction.channel)
-        await interaction.response.defer()
-
-
-# Update the menu command to use the new view
-@bot.command(name="menu")
-@bot_channel_only()
-async def chat_menu(ctx):
-    """Show interactive command dropdown menu with ALL commands to copy."""
-    embed = discord.Embed(
-        title="🎯 Command Menu - Copy & Paste",
-        description="**Select any command from the dropdown below to get the full command text to copy!**\n\n"
-                  "## How to use:\n"
-                  "1. **Select a command** from the dropdown menu\n"
-                  "2. **View the command** with proper syntax\n"
-                  "3. **Click '📋 Copy Command'** to copy it\n"
-                  "4. **Paste and use** in this channel\n\n"
-                  "All commands are ready to use with the correct format!",
-        color=discord.Color.blue()
-    )
-    
-    embed.add_field(
-        name="💡 Quick Tips",
-        value=(
-            "• **Copy the exact command** from the menu\n"
-            "• **Replace placeholders** like `@user` or `MESSAGE_ID`\n"
-            "• **Use quotes** for multi-word arguments\n"
-            "• **Commands only work** in this channel\n"
-            "• **Click '📋 Show All Commands List'** for the full command reference"
-        ),
-        inline=False
-    )
-    
-    embed.set_footer(text="🚀 Select any command below to get the copyable version!")
-    
-    view = CommandDropdownView()
-    await ctx.send(embed=embed, view=view)
 
 # =============================================================================
 # PERMISSION HELPER FUNCTIONS

@@ -759,8 +759,8 @@
     "has_active_private_chat": false,
     "private_chat_channel_id": null,
     "roles": [
-      "Admin",
-      "Master Lee's Family"
+      "Master Lee's Family",
+      "Admin"
     ],
     "programs": [],
     "auto_added": true,
@@ -806,8 +806,8 @@
     "nickname": "Instructor Sophie",
     "gender": "master_family",
     "registered_at": "2026-01-19T20:02:34.433962+00:00",
-    "has_active_private_chat": true,
-    "private_chat_channel_id": 1468564962807906451,
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
     "roles": [
       "Master Lee's Family"
     ],
@@ -1418,5 +1418,91 @@
       "National Team",
       "Demonstration Team"
     ]
+  },
+  "799622188813516810": {
+    "child_name": "daeniboi7216",
+    "role": "Special",
+    "role_display": "Special User",
+    "nickname": "Hodu Hodu",
+    "gender": "unknown",
+    "teams": [],
+    "registered_at": "2026-02-04T20:29:35.553504+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "auto_added": true,
+    "programs": [
+      "national"
+    ],
+    "roles": [
+      "Student",
+      "National Team"
+    ]
+  },
+  "1464035617460457634": {
+    "child_name": "Nathan Dawit",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Nathan Dawit's Mother",
+    "gender": "mother",
+    "programs": [],
+    "registered_at": "2026-02-04T22:35:36.244555+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "auto_added_from_sync": true,
+    "synced_at": "2026-02-04T22:35:36.244579+00:00"
+  },
+  "1468391377925832705": {
+    "child_name": "Noah Tekalegn",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Noah Tekalegn's Mother",
+    "gender": "mother",
+    "programs": [],
+    "registered_at": "2026-02-04T22:35:36.246543+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "auto_added_from_sync": true,
+    "synced_at": "2026-02-04T22:35:36.246562+00:00"
+  },
+  "1468048168825651241": {
+    "child_name": "Ryan Choi",
+    "role": "Mother",
+    "role_display": "\ud83d\udc69 Mother",
+    "nickname": "Ryan Choi's Mother",
+    "gender": "mother",
+    "programs": [],
+    "registered_at": "2026-02-04T22:35:36.255239+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ],
+    "auto_added_from_sync": true,
+    "synced_at": "2026-02-04T22:35:36.255264+00:00"
+  },
+  "757778376269234256": {
+    "child_name": "Emily Orozco Robledo",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Emily Orozco Robledo's Father",
+    "gender": "father",
+    "programs": [
+      "demonstration"
+    ],
+    "registered_at": "2026-02-04T22:35:36.256412+00:00",
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member",
+      "Demonstration Team"
+    ],
+    "auto_added_from_sync": true,
+    "synced_at": "2026-02-04T22:35:36.256433+00:00"
   }
 }
