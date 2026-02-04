@@ -328,6 +328,7 @@ def bot_channel_only():
         return ctx.author.id == ADMIN_USER_ID
     
     return commands.check(predicate)
+
 # =============================================================================
 # REGISTRATION VIEW CLASSES
 # =============================================================================
@@ -2367,32 +2368,39 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
     
-    # Handle monitored channel messages - ONLY DELETE THEM NOW
+    # Handle monitored channel messages - ALLOW COMMANDS
     if message.channel.id == GENERAL_CHAT_CHANNEL_ID:
-        # Delete any messages sent in general-chat
-        try:
-            await message.delete()
-            print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
-            
-            # Notify user via DM
+        # Check if this is a command that should be allowed
+        if message.content.startswith('!private'):
+            # Allow the command to be processed
+            await bot.process_commands(message)
+            # Note: The command itself will delete the message
+            return
+        else:
+            # Delete any non-command messages sent in general-chat
             try:
-                dm_channel = await message.author.create_dm()
-                embed = discord.Embed(
-                    title="⚠️ No Typing in General Chat",
-                    description=f"You cannot send messages in <#{GENERAL_CHAT_CHANNEL_ID}>!\n\n"
-                              "**To talk to us:**\n"
-                              "1. Go to the general-chat channel\n"
-                              "2. Click the **📩 Request Private Chat** button\n"
-                              "3. A private chat will be created for you\n\n"
-                              "Use the button every time you want to talk to us.",
-                    color=discord.Color.red()
-                )
-                await dm_channel.send(embed=embed)
+                await message.delete()
+                print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
+                
+                # Notify user via DM
+                try:
+                    dm_channel = await message.author.create_dm()
+                    embed = discord.Embed(
+                        title="⚠️ No Typing in General Chat",
+                        description=f"You cannot send messages in <#{GENERAL_CHAT_CHANNEL_ID}>!\n\n"
+                                  "**To talk to us:**\n"
+                                  "1. Go to the general-chat channel\n"
+                                  "2. Click the **📩 Request Private Chat** button\n"
+                                  "3. A private chat will be created for you\n\n"
+                                  "Use the button every time you want to talk to us.",
+                        color=discord.Color.red()
+                    )
+                    await dm_channel.send(embed=embed)
+                except:
+                    pass
             except:
                 pass
-        except:
-            pass
-        return
+            return
     
     # Handle private chat messages
     elif message.channel.id in private_channels:
@@ -2412,16 +2420,6 @@ async def on_message(message: discord.Message):
     
     # Process commands
     await bot.process_commands(message)
-
-async def delete_original_message(message: discord.Message) -> None:
-    """Delete original message from monitored channel after processing."""
-    try:
-        await message.delete()
-        print(f'🗑️ Deleted message from {message.author.name} in #{message.channel.name}')
-    except discord.Forbidden:
-        print(f'❌ Cannot delete message in #{message.channel.name}')
-    except discord.NotFound:
-        pass  # Message already deleted
 
 # =============================================================================
 # MESSAGE HANDLING FUNCTIONS
@@ -3344,16 +3342,7 @@ async def log_successful_registration(
 # =============================================================================
 # COMMAND DEFINITIONS
 # =============================================================================
-# Bot command group for administrative functions
-@bot.group(name="bot_command", invoke_without_command=True)
-async def bot_command(ctx):
-    """Main bot command category for administrative functions."""
-    if ctx.invoked_subcommand is None:
-        # If no subcommand was invoked, show help
-        embed = create_bot_commands_embed()
-        await ctx.send(embed=embed)
-
-@bot_command.command(name="chat")
+@bot.command(name="chat")
 @bot_channel_only()
 async def chat_command(ctx):
     """
@@ -3364,8 +3353,8 @@ async def chat_command(ctx):
     embed = discord.Embed(
         title="💬 **ADMIN BOT COMMANDS**",
         description="**All commands must be used in this channel only.**\n\n"
-                   "Use `!bot_command [command_name]`\n"
-                   "**Example:** `!bot_command view_user @user`\n",
+                   "Use `![command_name]`\n"
+                   "**Example:** `!view_user @user`\n",
         color=discord.Color.blue()
     )
     
@@ -3492,7 +3481,7 @@ async def chat_command(ctx):
 # =============================================================================
 # ADMINISTRATIVE COMMANDS (BOT CHANNEL ONLY)
 # =============================================================================
-@bot_command.command(name="active_private_chats")
+@bot.command(name="active_private_chats")
 @bot_channel_only()
 async def chat_active_private_chats(ctx):
     """Display all active private chats with status information."""
@@ -3536,7 +3525,7 @@ async def chat_active_private_chats(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="resend_delete_button")
+@bot.command(name="resend_delete_button")
 @bot_channel_only()
 async def chat_resend_delete_button(ctx, channel: discord.TextChannel):
     """Resend the permanent delete button in a private chat."""
@@ -3581,7 +3570,7 @@ async def chat_resend_delete_button(ctx, channel: discord.TextChannel):
     )
     await send_to_log_channel(ctx.guild, "", embed)
 
-@bot_command.command(name="active_chats")
+@bot.command(name="active_chats")
 @bot_channel_only()
 async def chat_active_chats(ctx):
     """Display active 1-on-1 conversations."""
@@ -3615,7 +3604,7 @@ async def chat_active_chats(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="clear_chats")
+@bot.command(name="clear_chats")
 @bot_channel_only()
 async def chat_clear_chats(ctx):
     """Clear all active conversation tracking data."""
@@ -3630,7 +3619,7 @@ async def chat_clear_chats(ctx):
     )
     await ctx.send(embed=embed)
 
-@bot_command.command(name="debug_ids")
+@bot.command(name="debug_ids")
 @bot_channel_only()
 async def chat_debug_ids(ctx):
     """Display all configured IDs for debugging purposes."""
@@ -3661,7 +3650,7 @@ async def chat_debug_ids(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="check_message")
+@bot.command(name="check_message")
 @bot_channel_only()
 async def chat_check_message(ctx, message_id: int = None):
     """Check reactions on a specific message."""
@@ -3688,7 +3677,7 @@ async def chat_check_message(ctx, message_id: int = None):
     except Exception as e:
         await ctx.send(f"❌ Error: {e}")
 
-@bot_command.command(name="update_message_id")
+@bot.command(name="update_message_id")
 @bot_channel_only()
 async def chat_update_message_id(ctx, message_id: int):
     """Manually update the rules message ID in configuration."""
@@ -3700,7 +3689,7 @@ async def chat_update_message_id(ctx, message_id: int):
     await ctx.send(f"✅ Updated rules message ID to: {message_id}")
     print(f"📝 Manually updated rules message ID to: {message_id}")
 
-@bot_command.command(name="register_stats")
+@bot.command(name="register_stats")
 @bot_channel_only()
 async def chat_register_stats(ctx):
     """Display registration statistics."""
@@ -3746,7 +3735,7 @@ async def chat_register_stats(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="view_json_data")
+@bot.command(name="view_json_data")
 @bot_channel_only()
 async def chat_view_json_data(ctx, member: discord.Member = None):
     """
@@ -3906,7 +3895,7 @@ async def chat_view_json_data(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed, ephemeral=True)
 
-@bot_command.command(name="update_discord_roles")
+@bot.command(name="update_discord_roles")
 @bot_channel_only()
 async def chat_update_roles_from_json(ctx):
     """
@@ -4061,7 +4050,7 @@ async def chat_update_roles_from_json(ctx):
     )
     await send_to_log_channel(guild, "", log_embed)
 
-@bot_command.command(name="assign_role")
+@bot.command(name="assign_role")
 @bot_channel_only()
 async def chat_assign_role(ctx, member: discord.Member, action: str, *, role_type_input: str):
     """
@@ -4492,7 +4481,7 @@ async def chat_assign_role(ctx, member: discord.Member, action: str, *, role_typ
         
         print(f"✅ Admin adjusted role for {member.name}: {action} {role_display}")
 
-@bot_command.command(name="view_user")
+@bot.command(name="view_user")
 @bot_channel_only()
 async def chat_view_user(ctx, member: discord.Member):
     """View detailed registration information for a user."""
@@ -4529,7 +4518,7 @@ async def chat_view_user(ctx, member: discord.Member):
     
     await ctx.send(embed=embed, ephemeral=True)
 
-@bot_command.command(name="send_dm")
+@bot.command(name="send_dm")
 @bot_channel_only()
 async def chat_send_dm(ctx, member: discord.Member, *, message: str):
     """Send a direct message to a user."""
@@ -4548,7 +4537,7 @@ async def chat_send_dm(ctx, member: discord.Member, *, message: str):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}", ephemeral=True)
 
-@bot_command.command(name="remove_check")
+@bot.command(name="remove_check")
 @bot_channel_only()
 async def chat_remove_check(ctx, member: discord.Member):
     """Manually remove a user's green check mark reaction."""
@@ -4572,7 +4561,7 @@ async def chat_remove_check(ctx, member: discord.Member):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 
-@bot_command.command(name="view_user_roles")
+@bot.command(name="view_user_roles")
 @bot_channel_only()
 async def chat_view_user_roles(ctx, member: discord.Member):
     """View a user's stored roles in the JSON file and compare with current Discord roles."""
@@ -4640,7 +4629,7 @@ async def chat_view_user_roles(ctx, member: discord.Member):
     
     await ctx.send(embed=embed, ephemeral=True)
 
-@bot_command.command(name="check_consistency")
+@bot.command(name="check_consistency")
 @bot_channel_only()
 async def chat_check_consistency(ctx):
     """Check consistency between registry and green check marks."""
@@ -4738,7 +4727,7 @@ async def chat_check_consistency(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
 
-@bot_command.command(name="fix_name")
+@bot.command(name="fix_name")
 @bot_channel_only()
 async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
     """Admin command to fix a user's registered name."""
@@ -4802,10 +4791,24 @@ async def chat_fix_name(ctx, member: discord.Member, *, new_name: str):
 # =============================================================================
 # AUTO-PIN BOT COMMAND ON STARTUP
 # =============================================================================
+@bot.command(name="admin_help")
+@bot_channel_only()
+async def chat_help(ctx):
+    """Show the command menu (same as !bot_command menu)."""
+    await chat_menu(ctx)
+
+# Add a quick command to show the menu
+@bot.command(name="commands")
+@bot_channel_only()
+async def quick_commands(ctx):
+    """Quick command to show the menu (alternative to !bot_command menu)."""
+    await chat_menu(ctx)
+
+# Update the auto_pin_bot_command function to include the menu
 async def auto_setup_command_chat():
     """
     Automatically send and pin the bot command help message on startup.
-    Only creates if not already exists.
+    Now includes dropdown menu option.
     """
     guild = bot.get_guild(GUILD_ID)
     if not guild:
@@ -4836,11 +4839,15 @@ async def auto_setup_command_chat():
         
         # If no existing bot command message, create and pin one
         if not bot_command_exists:
-            print("📌 Creating and pinning bot command message...")
+            print("📌 Creating and pinning bot command message with dropdown...")
             
             # Create the bot command embed using the updated function
             embed = create_bot_commands_embed()
-            message = await bot_channel.send(embed=embed)
+            
+            # Create view with dropdown
+            view = CommandDropdownView()
+            
+            message = await bot_channel.send(embed=embed, view=view)
             
             # Pin the message
             await message.pin(reason="Auto-pinned bot command on startup")
@@ -4849,11 +4856,25 @@ async def auto_setup_command_chat():
             # Also log to log channel
             log_embed = discord.Embed(
                 title="📌 Bot Command Auto-Pinned",
-                description=f"Bot command help message has been auto-pinned in {bot_channel.mention}",
+                description=f"Bot command help message with dropdown has been auto-pinned in {bot_channel.mention}",
                 color=discord.Color.green(),
                 timestamp=datetime.now(timezone.utc)
             )
             await send_to_log_channel(guild, "", log_embed)
+        else:
+            # Update existing pinned message to include dropdown
+            print("🔄 Updating existing pinned message with dropdown...")
+            for pinned_msg in pinned_messages:
+                if pinned_msg.author == bot.user and pinned_msg.embeds:
+                    for embed in pinned_msg.embeds:
+                        if embed.title and "ADMIN BOT COMMANDS" in embed.title:
+                            # Create view with dropdown
+                            view = CommandDropdownView()
+                            
+                            # Update the message
+                            await pinned_msg.edit(view=view)
+                            print(f"✅ Updated existing pinned message with dropdown: {pinned_msg.id}")
+                            break
     
     except Exception as e:
         print(f"❌ Error auto-pinning bot command: {e}")
@@ -5246,7 +5267,7 @@ async def update_welcome_message_id(new_message_id: int):
 # =============================================================================
 # CHANNEL CLEARING FUNCTION
 # =============================================================================
-@bot_command.command(name="clear_channel")
+@bot.command(name="clear_channel")
 @bot_channel_only()
 async def chat_clear_channel(ctx, channel: discord.TextChannel = None):
     """
@@ -6179,7 +6200,7 @@ async def before_monitoring_task():
 # =============================================================================
 # MONITORING COMMANDS
 # =============================================================================
-@bot_command.command(name="system_status")
+@bot.command(name="system_status")
 @bot_channel_only()
 async def chat_system_status(ctx):
     """Display current enhanced system status with detailed information."""
@@ -6335,7 +6356,7 @@ async def chat_system_status(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="monitoring_config")
+@bot.command(name="monitoring_config")
 @bot_channel_only()
 async def chat_monitoring_config(ctx):
     """Display current monitoring configuration."""
@@ -6394,7 +6415,7 @@ async def chat_monitoring_config(ctx):
     embed.set_footer(text="Use !bot_command update_monitoring_config to change settings")
     await ctx.send(embed=embed, ephemeral=True)
 
-@bot_command.command(name="update_monitoring_config")
+@bot.command(name="update_monitoring_config")
 @bot_channel_only()
 async def chat_update_monitoring_config(ctx, setting: str, value: float):
     """
@@ -6446,7 +6467,7 @@ async def chat_update_monitoring_config(ctx, setting: str, value: float):
     except ValueError:
         await ctx.send("❌ Invalid value. Please provide a number.", ephemeral=True)
 
-@bot_command.command(name="test_alert")
+@bot.command(name="test_alert")
 @bot_channel_only()
 async def chat_test_alert(ctx):
     """Test the monitoring alert system."""
@@ -6459,7 +6480,7 @@ async def chat_test_alert(ctx):
     await system_monitor.send_monitoring_alert("cpu_temp", 85.0, 75.0)
     await ctx.send("✅ Test alert sent to admin. Check your DMs!", ephemeral=True)
 
-@bot_command.command(name="monitoring_status")
+@bot.command(name="monitoring_status")
 @bot_channel_only()
 async def chat_monitoring_task_status(ctx):
     """Show the status of the monitoring task."""
@@ -6508,7 +6529,7 @@ async def chat_monitoring_task_status(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="start_monitoring")
+@bot.command(name="start_monitoring")
 @bot_channel_only()
 async def chat_start_monitoring(ctx):
     """Manually start the monitoring task."""
@@ -6537,7 +6558,7 @@ async def chat_start_monitoring(ctx):
     except Exception as e:
         await ctx.send(f"❌ Failed to start monitoring: {str(e)}", ephemeral=True)
 
-@bot_command.command(name="stop_monitoring")
+@bot.command(name="stop_monitoring")
 @bot_channel_only()
 async def chat_stop_monitoring(ctx):
     """Stop the monitoring task."""
@@ -6781,7 +6802,7 @@ async def on_ready():
 # ============================================================================
 # ROLE MANAGEMENT COMMANDS
 # =============================================================================
-@bot_command.command(name="remove_role")
+@bot.command(name="remove_role")
 @bot_channel_only()
 async def remove_role(ctx, member: discord.Member, role_type: str):
     """
@@ -6840,7 +6861,7 @@ async def remove_role(ctx, member: discord.Member, role_type: str):
     except Exception as e:
         await ctx.send(f"❌ Error removing role: {e}", ephemeral=True)
 
-@bot_command.command(name="cleanup_json")
+@bot.command(name="cleanup_json")
 @bot_channel_only()
 async def chat_cleanup_json(ctx):
     """Clean up registered_users.json by removing users no longer in the server."""
@@ -6913,7 +6934,7 @@ async def chat_cleanup_json(ctx):
 # =============================================================================
 # SETUP COMMANDS
 # =============================================================================
-@bot_command.command(name="setup")
+@bot.command(name="setup")
 @bot_channel_only()
 async def chat_setup(ctx):
     """Set up the rules message with reaction in rules channel."""
@@ -6948,7 +6969,7 @@ async def chat_setup(ctx):
     await ctx.send(f"✅ Rules message set up! New Message ID: {rules_message.id}")
     print(f"📝 New rules message ID saved: {rules_message.id}")
 
-@bot_command.command(name="setup_bot_channel")
+@bot.command(name="setup_bot_channel")
 @bot_channel_only()
 async def setup_bot_channel_command(ctx):
     """Set up the bot command channel for administrative commands."""
@@ -7011,7 +7032,7 @@ async def setup_bot_channel_command(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error creating bot command channel: {e}")
 
-@bot_command.command(name="setup_log_channel")
+@bot.command(name="setup_log_channel")
 @bot_channel_only()
 async def setup_log_channel_command(ctx):
     """Set up the log channel for bot notifications."""
@@ -7089,7 +7110,7 @@ async def setup_log_channel_command(ctx):
 # =============================================================================
 # GENERAL CHAT COMMANDS
 # =============================================================================
-@bot_command.command(name="reset_general_permissions")
+@bot.command(name="reset_general_permissions")
 @bot_channel_only()
 async def chat_reset_general_permissions(ctx):
     """Reset all permissions for general-chat channel to default."""
@@ -7255,7 +7276,7 @@ async def before_update_json_task():
     await bot.wait_until_ready()
     print("⏰ 24-hour JSON update task is waiting to start...")
 
-@bot_command.command(name="timezone_info")
+@bot.command(name="timezone_info")
 @bot_channel_only()
 async def chat_timezone_info(ctx):
     """Display current timezone information for monitoring."""
@@ -7810,6 +7831,265 @@ ROLE_IDS = {
 }
 
 # =============================================================================
+# COMMAND DROPDOWN MENU SYSTEM
+# =============================================================================
+class CommandDropdown(discord.ui.Select):
+    """Dropdown menu for all bot commands (flat list)."""
+    
+    def __init__(self):
+        # Create a flat list of all commands without categories
+        options = []
+        
+        # Get all available commands
+        commands_list = [
+            ("📊", "active_private_chats", "Show all active private chats"),
+            ("📊", "active_chats", "Show active 1-on-1 conversations"),
+            ("📊", "register_stats", "Show registration statistics"),
+            ("📊", "system_status", "Show Raspberry Pi system status"),
+            ("📊", "monitoring_config", "View monitoring thresholds"),
+            
+            ("👤", "view_user", "Complete user profile with all data"),
+            ("👤", "view_user_roles", "View JSON vs Discord role comparison"),
+            ("👤", "send_dm", "Send direct message to user"),
+            ("👤", "assign_role", "Add/remove any role"),
+            ("👤", "fix_name", "Fix user's registered name"),
+            ("👤", "remove_check", "Remove user's green check"),
+            ("👤", "update_discord_roles", "Update Discord roles from JSON"),
+            
+            ("🔒", "resend_delete_button", "Fix delete button in channel"),
+            ("🔒", "reset_general_permissions", "Reset general-chat permissions"),
+            
+            ("🎭", "remove_role", "Remove special role"),
+            ("🎭", "apply_role_permissions", "Apply role permissions to channels"),
+            ("🎭", "check_channel_permissions", "Check channel permissions"),
+            
+            ("📝", "check_consistency", "Check registry consistency"),
+            ("📝", "force_register", "Force start registration"),
+            
+            ("💾", "view_json_data", "View raw JSON data for user"),
+            ("💾", "cleanup_json", "Clean orphaned JSON entries"),
+            ("💾", "migrate_json_structure", "Migrate JSON to new structure"),
+            ("💾", "list_backups", "List all backup files"),
+            ("💾", "verify_json_structure", "Verify JSON structure"),
+            
+            ("🛠️", "setup", "Setup rules message"),
+            ("🛠️", "setup_bot_channel", "Create bot command channel"),
+            ("🛠️", "setup_log_channel", "Create log channel"),
+            ("🛠️", "clear_chats", "Clear active conversations"),
+            ("🛠️", "update_message_id", "Update rules message ID"),
+            ("🛠️", "clear_channel", "Clear ALL messages in channel"),
+            
+            ("🔄", "update_json_roles", "Force immediate JSON sync"),
+            ("🔄", "force_json_sync", "Force sync for specific user"),
+            ("🔄", "json_task_status", "Show JSON task status"),
+            ("🔄", "start_json_task", "Start JSON sync task"),
+            ("🔄", "stop_json_task", "Stop JSON sync task"),
+            ("🔄", "verify_json_roles", "Verify JSON role sync"),
+            
+            ("📈", "monitoring_status", "Show monitoring task status"),
+            ("📈", "start_monitoring", "Start system monitoring"),
+            ("📈", "stop_monitoring", "Stop system monitoring"),
+            ("📈", "test_alert", "Test monitoring alert system"),
+            ("📈", "update_monitoring_config", "Update thresholds"),
+            
+            ("🐛", "debug_ids", "Show all configuration IDs"),
+            ("🐛", "check_message", "Check message reactions"),
+        ]
+        
+        # Add all commands to dropdown (max 25 - Discord limit)
+        for emoji, command, description in commands_list[:25]:  # Discord limit
+            options.append(
+                discord.SelectOption(
+                    label=command,
+                    description=description[:100],  # Truncate to 100 chars
+                    emoji=emoji
+                )
+            )
+        
+        super().__init__(
+            placeholder="🎯 Select a command to copy...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Handle dropdown selection - show command to copy."""
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("❌ Only admin can use this menu.", ephemeral=True)
+            return
+        
+        selected_command = self.values[0]
+        
+        # Get the correct command format based on the selected command
+        commands_dict = {
+            "active_private_chats": ("!active_private_chats", "Show all active private chats with activity status"),
+            "active_chats": ("!active_chats", "Show active 1-on-1 conversations"),
+            "register_stats": ("!register_stats", "Show registration statistics"),
+            "system_status": ("!system_status", "Show Raspberry Pi system status"),
+            "monitoring_config": ("!monitoring_config", "View monitoring thresholds and settings"),
+            
+            "view_user": ("!view_user @user", "Complete user profile with all data"),
+            "view_user_roles": ("!view_user_roles @user", "View JSON vs Discord role comparison"),
+            "send_dm": ("!send_dm @user \"message\"", "Send direct message to user"),
+            "assign_role": ("!assign_role @user add/remove role_name", "Add/remove any role"),
+            "fix_name": ("!fix_name @user \"new name\"", "Fix user's registered name"),
+            "remove_check": ("!remove_check @user", "Remove user's green check"),
+            "update_discord_roles": ("!update_discord_roles", "Update Discord roles from JSON file"),
+            
+            "resend_delete_button": ("!resend_delete_button #channel", "Fix delete button in channel"),
+            "reset_general_permissions": ("!reset_general_permissions", "Reset general-chat permissions"),
+            
+            "remove_role": ("!remove_role @user role_type", "Remove special role (instructor, master_family, both)"),
+            "apply_role_permissions": ("!apply_role_permissions", "Apply role permissions to all channels"),
+            "check_channel_permissions": ("!check_channel_permissions [channel]", "Check channel permissions"),
+            
+            "check_consistency": ("!check_consistency", "Check registry/green check consistency"),
+            "force_register": ("!force_register", "Force start registration for yourself"),
+            
+            "view_json_data": ("!view_json_data @user", "View raw JSON data for user"),
+            "cleanup_json": ("!cleanup_json", "Clean orphaned JSON entries"),
+            "migrate_json_structure": ("!migrate_json_structure", "Migrate JSON to new structure with backup"),
+            "list_backups": ("!list_backups", "List all backup files"),
+            "verify_json_structure": ("!verify_json_structure", "Verify JSON structure"),
+            
+            "setup": ("!setup", "Setup rules message"),
+            "setup_bot_channel": ("!setup_bot_channel", "Create bot command channel"),
+            "setup_log_channel": ("!setup_log_channel", "Create log channel"),
+            "clear_chats": ("!clear_chats", "Clear active conversations"),
+            "update_message_id": ("!update_message_id MESSAGE_ID", "Update rules message ID"),
+            "clear_channel": ("!clear_channel [#channel]", "Clear ALL messages in a channel"),
+            
+            "update_json_roles": ("!update_json_roles", "Force immediate JSON sync"),
+            "force_json_sync": ("!force_json_sync @user", "Force sync for specific user"),
+            "json_task_status": ("!json_task_status", "Show JSON task status"),
+            "start_json_task": ("!start_json_task", "Start JSON sync task"),
+            "stop_json_task": ("!stop_json_task", "Stop JSON sync task"),
+            "verify_json_roles": ("!verify_json_roles @user", "Verify JSON role sync"),
+            
+            "monitoring_status": ("!monitoring_status", "Show monitoring task status"),
+            "start_monitoring": ("!start_monitoring", "Start system monitoring"),
+            "stop_monitoring": ("!stop_monitoring", "Stop system monitoring"),
+            "test_alert": ("!test_alert", "Test monitoring alert system"),
+            "update_monitoring_config": ("!update_monitoring_config setting value", "Update monitoring thresholds"),
+            
+            "debug_ids": ("!debug_ids", "Show all configuration IDs"),
+            "check_message": ("!check_message MESSAGE_ID", "Check message reactions"),
+        }
+        
+        # Get command details
+        if selected_command in commands_dict:
+            command_text, description = commands_dict[selected_command]
+            
+            # Create embed with the command to copy
+            embed = discord.Embed(
+                title=f"📋 Command: {selected_command}",
+                description=f"**Click the button below to copy this command:**",
+                color=discord.Color.blue()
+            )
+            
+            # Add command code block
+            embed.add_field(
+                name="Command to Copy:",
+                value=f"```{command_text}```",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="Description:",
+                value=description,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="Usage Notes:",
+                value=f"• **Channel:** This command only works in <#{BOT_COMMAND_CHANNEL_ID}>\n"
+                      f"• **Replace placeholders** (@user, #channel, MESSAGE_ID, etc.) with actual values\n"
+                      f"• **Use quotes** for messages with spaces\n"
+                      f"• **Syntax:** Follow the format exactly as shown above",
+                inline=False
+            )
+            
+            # Create view with copy button
+            view = discord.ui.View(timeout=300)
+            
+            # Add back button
+            back_button = discord.ui.Button(
+                label="⬅️ Back to Menu",
+                style=discord.ButtonStyle.secondary,
+                emoji="⬅️"
+            )
+            
+            async def back_button_callback(interaction: discord.Interaction):
+                # Recreate the menu view
+                new_view = CommandDropdownView()
+                await interaction.response.edit_message(view=new_view)
+            
+            back_button.callback = back_button_callback
+            view.add_item(back_button)
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"❌ Command '{selected_command}' not found in database.",
+                ephemeral=True
+            )
+
+
+class CommandDropdownView(discord.ui.View):
+    """View containing the command dropdown menu."""
+    
+    def __init__(self):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.add_item(CommandDropdown())
+        
+    @discord.ui.button(label="📋 Show All Commands List", style=discord.ButtonStyle.secondary, row=1)
+    async def show_all_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show the full command list in an embed."""
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("❌ Only admin can use this button.", ephemeral=True)
+            return
+        
+        # Show the full command list using your existing chat_command function
+        await chat_command(interaction.channel)
+        await interaction.response.defer()
+
+
+# Update the menu command to use the new view
+@bot.command(name="menu")
+@bot_channel_only()
+async def chat_menu(ctx):
+    """Show interactive command dropdown menu with ALL commands to copy."""
+    embed = discord.Embed(
+        title="🎯 Command Menu - Copy & Paste",
+        description="**Select any command from the dropdown below to get the full command text to copy!**\n\n"
+                  "## How to use:\n"
+                  "1. **Select a command** from the dropdown menu\n"
+                  "2. **View the command** with proper syntax\n"
+                  "3. **Click '📋 Copy Command'** to copy it\n"
+                  "4. **Paste and use** in this channel\n\n"
+                  "All commands are ready to use with the correct format!",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(
+        name="💡 Quick Tips",
+        value=(
+            "• **Copy the exact command** from the menu\n"
+            "• **Replace placeholders** like `@user` or `MESSAGE_ID`\n"
+            "• **Use quotes** for multi-word arguments\n"
+            "• **Commands only work** in this channel\n"
+            "• **Click '📋 Show All Commands List'** for the full command reference"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text="🚀 Select any command below to get the copyable version!")
+    
+    view = CommandDropdownView()
+    await ctx.send(embed=embed, view=view)
+
+# =============================================================================
 # PERMISSION HELPER FUNCTIONS
 # =============================================================================
 
@@ -7926,8 +8206,7 @@ async def apply_channel_permissions(guild, channel, config):
 # =============================================================================
 # RESTRUCTURED APPLY ROLE PERMISSIONS COMMAND
 # =============================================================================
-
-@bot_command.command(name="apply_role_permissions")
+@bot.command(name="apply_role_permissions")
 @bot_channel_only()
 async def chat_apply_role_permissions(ctx, specific_channel: str = None):
     """
@@ -8159,8 +8438,7 @@ async def chat_apply_role_permissions(ctx, specific_channel: str = None):
 # =============================================================================
 # QUICK PERMISSION CHECK COMMAND
 # =============================================================================
-
-@bot_command.command(name="check_channel_permissions")
+@bot.command(name="check_channel_permissions")
 @bot_channel_only()
 async def chat_check_channel_permissions(ctx, channel_name: str = None):
     """
@@ -8304,11 +8582,111 @@ async def display_channel_permissions(ctx, channel):
     
     await ctx.send(embed=embed, ephemeral=True)
 
+@bot.command(name="private")
+async def private_chat_general(ctx, target_user: discord.Member):
+    """
+    Admin/Master Lee's Family: Create a private chat with any family member from general-chat.
+    
+    This command can be used in the general-chat channel.
+    The command message is automatically deleted immediately after execution.
+    
+    Usage: !private @username
+    """
+    
+    # Check if command is in general-chat channel
+    if ctx.channel.id != GENERAL_CHAT_CHANNEL_ID:
+        # If not in general-chat, only allow in bot command channel
+        if ctx.channel.id != BOT_COMMAND_CHANNEL_ID:
+            try:
+                await ctx.message.delete()
+            except:
+                pass
+            return
+        
+        # In bot command channel, check admin authorization
+        if ctx.author.id != ADMIN_USER_ID:
+            return
+    
+    # Check if user has permission (Admin or Master Lee's Family)
+    master_lee_family_role = ctx.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+    is_master_lee_family = master_lee_family_role and master_lee_family_role in ctx.author.roles
+    
+    if ctx.author.id != ADMIN_USER_ID and not is_master_lee_family:
+        # Delete command message immediately
+        try:
+            await ctx.message.delete()
+        except:
+            pass
+        return
+    
+    # Check if target user has a family role
+    allowed_roles = [FAMILY_ROLE_ID, STUDENT_ROLE_ID, INSTRUCTOR_ROLE_ID, MASTER_LEE_FAMILY_ROLE_ID]
+    user_roles = [role.id for role in target_user.roles]
+    has_allowed_role = any(role_id in user_roles for role_id in allowed_roles if role_id != 0)
+    
+    if not has_allowed_role:
+        # Check if they're registered
+        if str(target_user.id) not in registered_users:
+            # Delete command message immediately
+            try:
+                await ctx.message.delete()
+            except:
+                pass
+            return
+    
+    # TICKER SYSTEM: Check if user already has an active private chat
+    user_id_str = str(target_user.id)
+    if user_id_str in registered_users:
+        user_data = registered_users[user_id_str]
+        
+        # Check if they have an active private chat according to ticker
+        if user_data.get('has_active_private_chat', False) and user_data.get('private_chat_channel_id'):
+            channel_id = user_data['private_chat_channel_id']
+            existing_channel = ctx.guild.get_channel(channel_id)
+            
+            if existing_channel:
+                # Channel exists and ticker says it's active - just delete command
+                try:
+                    await ctx.message.delete()
+                except:
+                    pass
+                return
+    
+    # Create new private chat using existing function
+    private_chat = await create_private_channel(ctx.guild, target_user, f"created-by-{ctx.author.name}-in-general-chat")
+    
+    # Delete command message immediately (whether successful or not)
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+    
+    if not private_chat:
+        # If creation failed, just delete the message and exit
+        return
+    
+    # Update ticker in registered users
+    if user_id_str in registered_users:
+        registered_users[user_id_str]['has_active_private_chat'] = True
+        registered_users[user_id_str]['private_chat_channel_id'] = private_chat.id
+        save_registered_users(registered_users)
+    
+    # Log to log channel only (no DM)
+    log_embed = discord.Embed(
+        title="🔧 Private Chat Created from General Chat",
+        description=f"**Created by:** {ctx.author.mention}\n"
+                   f"**For user:** {target_user.mention} ({target_user.id})\n"
+                   f"**Channel:** {private_chat.mention} ({private_chat.id})\n"
+                   f"**Time:** <t:{int(time.time())}:F>",
+        color=discord.Color.purple(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    await send_to_log_channel(ctx.guild, "", log_embed)
+
 # =============================================================================
 # MANUAL UPDATE COMMAND
 # =============================================================================
-
-@bot_command.command(name="update_json_roles")
+@bot.command(name="update_json_roles")
 @bot_channel_only()
 async def chat_update_json_roles(ctx):
     """
@@ -8347,7 +8725,7 @@ async def chat_update_json_roles(ctx):
         )
         await ctx.send(embed=error_embed)
 
-@bot_command.command(name="force_json_sync")
+@bot.command(name="force_json_sync")
 @bot_channel_only()
 async def chat_force_json_sync(ctx, member: discord.Member = None):
     """
@@ -8432,7 +8810,7 @@ async def chat_force_json_sync(ctx, member: discord.Member = None):
         
         await ctx.send("✅ Force sync complete! Programs field now synchronized with roles.")
 
-@bot_command.command(name="json_task_status")
+@bot.command(name="json_task_status")
 @bot_channel_only()
 async def chat_json_task_status(ctx):
     """Show the status of the 24-hour JSON update task."""
@@ -8470,7 +8848,7 @@ async def chat_json_task_status(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="start_json_task")
+@bot.command(name="start_json_task")
 @bot_channel_only()
 async def chat_start_json_task(ctx):
     """Manually start the 24-hour JSON update task."""
@@ -8498,7 +8876,7 @@ async def chat_start_json_task(ctx):
     except Exception as e:
         await ctx.send(f"❌ Failed to start task: {str(e)}", ephemeral=True)
 
-@bot_command.command(name="stop_json_task")
+@bot.command(name="stop_json_task")
 @bot_channel_only()
 async def chat_stop_json_task(ctx):
     """Stop the 24-hour JSON update task."""
@@ -8526,7 +8904,7 @@ async def chat_stop_json_task(ctx):
     except Exception as e:
         await ctx.send(f"❌ Failed to stop task: {str(e)}", ephemeral=True)
 
-@bot_command.command(name="migrate_json_structure")
+@bot.command(name="migrate_json_structure")
 @bot_channel_only()
 async def chat_migrate_json_structure(ctx):
     """
@@ -8782,7 +9160,7 @@ async def verify_special_roles(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="list_backups")
+@bot.command(name="list_backups")
 @bot_channel_only()
 async def chat_list_backups(ctx):
     """List all backup files created by the migration command."""
@@ -8825,7 +9203,7 @@ async def chat_list_backups(ctx):
     
     await ctx.send(embed=embed)
 
-@bot_command.command(name="verify_json_structure")
+@bot.command(name="verify_json_structure")
 @bot_channel_only()
 async def chat_verify_json_structure(ctx):
     """Verify that JSON file follows the new structure."""
@@ -8957,8 +9335,7 @@ async def chat_verify_json_structure(ctx):
 # =============================================================================
 # QUICK VERIFICATION COMMAND
 # =============================================================================
-
-@bot_command.command(name="verify_json_roles")
+@bot.command(name="verify_json_roles")
 @bot_channel_only()
 async def chat_verify_json_roles(ctx, member: discord.Member = None):
     """
