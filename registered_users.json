@@ -493,8 +493,8 @@
     "nickname": "Gabriel Schneider",
     "gender": "student",
     "registered_at": "2026-01-16T00:52:22.194008+00:00",
-    "has_active_private_chat": false,
-    "private_chat_channel_id": null,
+    "has_active_private_chat": true,
+    "private_chat_channel_id": 1468788075739217981,
     "roles": [
       "Student"
     ],
@@ -1377,8 +1377,8 @@
     "gender": "father",
     "registered_at": "2026-01-31T15:41:28.867037+00:00",
     "programs": [],
-    "has_active_private_chat": true,
-    "private_chat_channel_id": 1467183121287090226,
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
     "roles": [
       "Family Member"
     ]
@@ -1504,5 +1504,19 @@
     ],
     "auto_added_from_sync": true,
     "synced_at": "2026-02-04T22:35:36.256433+00:00"
+  },
+  "1463989087374671940": {
+    "child_name": "Imar Bouafia",
+    "role": "Father",
+    "role_display": "\ud83d\udc68 Father",
+    "nickname": "Imar Bouafia's Father",
+    "gender": "father",
+    "registered_at": "2026-02-04T23:50:55.893921+00:00",
+    "programs": [],
+    "has_active_private_chat": false,
+    "private_chat_channel_id": null,
+    "roles": [
+      "Family Member"
+    ]
   }
 }

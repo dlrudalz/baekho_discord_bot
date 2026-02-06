@@ -314,6 +314,7 @@ def bot_channel_only():
     Decorator to restrict commands to bot command channel.
     
     Silently deletes ALL command messages if used in wrong channel.
+    Allows both ADMIN_USER_ID and Master Lee's Family role members.
     """
     async def predicate(ctx):
         # Channel restriction - silently delete if wrong channel
@@ -324,8 +325,17 @@ def bot_channel_only():
                 pass
             return False
         
-        # Admin authorization
-        return ctx.author.id == ADMIN_USER_ID
+        # Check if user is admin
+        if ctx.author.id == ADMIN_USER_ID:
+            return True
+        
+        # Check if user has Master Lee's Family role
+        master_lee_family_role = ctx.guild.get_role(MASTER_LEE_FAMILY_ROLE_ID)
+        if master_lee_family_role and master_lee_family_role in ctx.author.roles:
+            return True
+        
+        # If neither admin nor Master Lee's Family, deny access
+        return False
     
     return commands.check(predicate)
 
